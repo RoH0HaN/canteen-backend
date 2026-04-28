@@ -1,0 +1,52 @@
+{
+  "name": "com.jisgroup.canteen",
+  "version": "1.0.0",
+  "description": "This is an industry-standard backend for canteen inventory system using Node.js (ES Modules) + Express + Supabase (Database + Storage). The system will manage goods, track stock, record purchase (restock) with vendor bill uploads, and handle goods issuance with stock validation.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RoH0HaN/canteen-backend.git"
+  },
+  "keywords": [
+    "canteen",
+    "food",
+    "meals",
+    "express",
+    "node",
+    "vendor",
+    "goods"
+  ],
+  "author": "Rohan Debnath",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/RoH0HaN/canteen-backend/issues"
+  },
+  "homepage": "https://github.com/RoH0HaN/canteen-backend#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
+    "body-parser": "^2.2.2",
+    "cookie-session": "^2.1.1",
+    "cors": "^2.8.6",
+    "dayjs": "^1.11.20",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.4.1",
+    "file-type": "^22.0.1",
+    "fs-extra": "^11.3.4",
+    "helmet": "^8.1.0",
+    "joi": "^18.1.2",
+    "morgan": "^1.10.1",
+    "multer": "^2.1.1",
+    "prettier": "^3.8.3",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
