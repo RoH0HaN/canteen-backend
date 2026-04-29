@@ -10,9 +10,9 @@ import { generalRateLimiter } from "./middlewares/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 // Route imports would go here
-import PurchaseRoutes from "./routes/purchaseRoutes.js";
-import ConsumptionRoutes from "./routes/consumptionRoutes.js";
-import GoodsRoutes from "./routes/goodsRoutes.js";
+import UserRoutes from "./routes/userRoutes.js";
+import VendorRoutes from "./routes/vendorRoutes.js";
+import cookieParser from "cookie-parser";
 
 export class App {
   constructor() {
@@ -34,6 +34,7 @@ export class App {
     this.app.use(express.json({ limit: "10mb" }));
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(generalRateLimiter);
+    this.app.use(cookieParser());
 
     // COOKIE SESSION (for OAuth session)
     this.app.use(
@@ -57,9 +58,8 @@ export class App {
     });
 
     // API routes will be added here
-    this.app.use(`${initial}/purchase`, new PurchaseRoutes().router);
-    this.app.use(`${initial}/consumption`, new ConsumptionRoutes().router);
-    this.app.use(`${initial}/goods`, new GoodsRoutes().router);
+    this.app.use(`${initial}/users`, new UserRoutes().router);
+    this.app.use(`${initial}/vendors`, new VendorRoutes().router);
   }
 
   initializeErrorHandling() {
