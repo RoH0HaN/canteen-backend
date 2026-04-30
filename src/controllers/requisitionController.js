@@ -9,6 +9,8 @@ import {
   receiveRequisitionSchema,
   updateRequisitionSchema,
 } from "../utils/validators.js";
+import { uploadFile } from "../services/storageService.js";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * @desc    Create a new requisition
@@ -146,7 +148,7 @@ export const getRequisitionById = asyncHandler(async (req, res, next) => {
 
 /**
  * @desc    Approve a requisition (Manager only)
- * @route   PATCH /api/v1/requisitions/approve/:id
+ * @route   PUT /api/v1/requisitions/approve/:id
  * @access  Private (Manager only)
  * @param   {number} id - Requisition ID in URL
  * @returns {AppSuccess} No data, only message
@@ -213,12 +215,12 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess("Requisition approved successfully", 200));
+    .json(new AppSuccess("Requisition approved successfully", null, 200));
 });
 
 /**
  * @desc    Mark a requisition as received (stock is automatically updated)
- * @route   PATCH /api/v1/requisitions/receive/:id
+ * @route   PUT /api/v1/requisitions/receive/:id
  * @access  Private (Data Entry)
  * @param   {number} id - Requisition ID in URL
  * @returns {AppSuccess} No data, only message
@@ -235,10 +237,12 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
   if (isNaN(requisitionId))
     return next(new AppError("Invalid requisition ID", 400));
 
+  req.body.items = JSON.parse(req.body.items);
+
   const { error, value } = receiveRequisitionSchema.validate(req.body);
   if (error) return next(new AppError(error.details[0].message, 400));
 
-  const { items } = value;
+  const { items, total_amount } = value;
 
   const requisition =
     await RequisitionService.getRequisitionById(requisitionId);
@@ -271,9 +275,28 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
     });
   }
 
-  await RequisitionService.updateRequisition(requisitionId, {
+  const requisitionData = {
     status: "received",
-  });
+    total_amount: total_amount || requisition.total_amount,
+  };
+  // Handle optional file upload (vendor bill or delivery challan)
+  if (req.file) {
+    try {
+      requisitionData.bill_file_url = await uploadFile(
+        req.file,
+        `VENDOR/BILL/${uuidv4()}`,
+      );
+    } catch (uploadError) {
+      return next(
+        new AppError(
+          `Failed to upload vendor bill: ${uploadError.message}`,
+          500,
+        ),
+      );
+    }
+  }
+
+  await RequisitionService.updateRequisition(requisitionId, requisitionData);
   await RequisitionService.insertRequisitionStatusLog({
     requisition_id: requisitionId,
     old_status: "approved",
@@ -284,7 +307,9 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess("Requisition marked as received successfully", 200));
+    .json(
+      new AppSuccess("Requisition marked as received successfully", null, 200),
+    );
 });
 
 /**
@@ -330,7 +355,9 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
     });
   }
 
-  res.status(200).json(new AppSuccess("Requisition updated successfully", 200));
+  res
+    .status(200)
+    .json(new AppSuccess("Requisition updated successfully", null, 200));
 });
 
 /**
@@ -356,7 +383,9 @@ export const deleteRequisition = asyncHandler(async (req, res, next) => {
   if (!existing) return next(new AppError("Requisition not found", 404));
 
   await RequisitionService.deleteRequisition(requisitionId);
-  res.status(200).json(new AppSuccess("Requisition deleted successfully", 200));
+  res
+    .status(200)
+    .json(new AppSuccess("Requisition deleted successfully", null, 200));
 });
 
 /**
@@ -374,7 +403,7 @@ export const deleteRequisition = asyncHandler(async (req, res, next) => {
  * }
  */
 export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
-  const itemId = parseInt(req.params.itemId, 10);
+  const itemId = parseInt(req.params.id, 10);
   if (isNaN(itemId)) return next(new AppError("Invalid item ID", 400));
 
   const requisitionItem =
@@ -385,7 +414,7 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
   await RequisitionService.deleteRequisitionItem(itemId);
   res
     .status(200)
-    .json(new AppSuccess("Requisition item deleted successfully", 200));
+    .json(new AppSuccess("Requisition item deleted successfully", null, 200));
 });
 
 /**
@@ -479,12 +508,15 @@ export const getAllRequisitions = asyncHandler(async (req, res, next) => {
  * }
  */
 export const getRequisitionsByVendor = asyncHandler(async (req, res, next) => {
-  const vendorId = parseInt(req.params.vendorId, 10);
+  const vendorId = parseInt(req.params.id, 10);
   if (isNaN(vendorId)) return next(new AppError("Invalid vendor ID", 400));
 
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const search = req.query.search || "";
+
+  const vendor = await VendorService.getVendorById(vendorId);
+  if (!vendor) return next(new AppError("Vendor not found", 404));
 
   const result = await RequisitionService.getRequisitionsByVendorId(vendorId, {
     page,

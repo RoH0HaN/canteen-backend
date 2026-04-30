@@ -90,6 +90,7 @@ export const approveRequisitionSchema = Joi.object({
 });
 
 export const receiveRequisitionSchema = Joi.object({
+  total_amount: Joi.number().optional(),
   items: Joi.array()
     .items(
       Joi.object({
@@ -103,10 +104,11 @@ export const receiveRequisitionSchema = Joi.object({
 export const updateRequisitionSchema = Joi.object({
   vendor_id: Joi.number().required(),
   notes: Joi.string().optional(),
+  total_amount: Joi.number().optional(),
   items: Joi.array()
     .items(
       Joi.object({
-        item_id: Joi.number().required(),
+        id: Joi.number().required(),
         required_quantity: Joi.number().optional(),
         approved_quantity: Joi.number().optional(),
         approval_remarks: Joi.string().optional(),

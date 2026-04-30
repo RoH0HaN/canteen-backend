@@ -219,7 +219,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .cookie("accessToken", accessToken, options)
-    .json(new AppSuccess("Token refreshed", 200));
+    .json(new AppSuccess("Token refreshed", null, 200));
 });
 
 /**
@@ -246,7 +246,7 @@ export const logoutUser = asyncHandler(async (req, res, next) => {
     .status(200)
     .clearCookie("accessToken")
     .clearCookie("refreshToken")
-    .json(new AppSuccess("Logout successful", 200));
+    .json(new AppSuccess("Logout successful", null, 200));
 });
 
 /**
@@ -367,7 +367,9 @@ export const blockUser = asyncHandler(async (req, res, next) => {
   const updatedUser = await UserService.updateUser(userId, {
     status: "blocked",
   });
-  res.status(200).json(new AppSuccess(`User ${updatedUser.name} blocked`, 200));
+  res
+    .status(200)
+    .json(new AppSuccess(`User ${updatedUser.name} blocked`, null, 200));
 });
 
 /**
@@ -400,7 +402,7 @@ export const unblockUser = asyncHandler(async (req, res, next) => {
   });
   res
     .status(200)
-    .json(new AppSuccess(`User ${updatedUser.name} unblocked`, 200));
+    .json(new AppSuccess(`User ${updatedUser.name} unblocked`, null, 200));
 });
 
 /**
@@ -446,7 +448,9 @@ export const changeUserPassword = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess(`Password for ${updatedUser.name} changed`, 200));
+    .json(
+      new AppSuccess(`Password for ${updatedUser.name} changed`, null, 200),
+    );
 });
 
 /**

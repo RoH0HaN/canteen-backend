@@ -139,13 +139,7 @@ export const updateVendor = asyncHandler(async (req, res, next) => {
   const updatedVendor = await VendorService.updateVendor(vendorId, vendorData);
   res
     .status(200)
-    .json(
-      new AppSuccess(
-        `Vendor ${updatedVendor.name} updated`,
-        updatedVendor,
-        200,
-      ),
-    );
+    .json(new AppSuccess(`Vendor ${updatedVendor.name} updated`, null, 200));
 });
 
 /**
@@ -209,7 +203,9 @@ export const deleteVendor = asyncHandler(async (req, res, next) => {
   }
 
   await VendorService.deleteVendor(vendorId);
-  res.status(200).json(new AppSuccess(`Vendor ${vendor.name} deleted`, 200));
+  res
+    .status(200)
+    .json(new AppSuccess(`Vendor ${vendor.name} deleted`, null, 200));
 });
 
 /**

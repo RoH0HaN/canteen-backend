@@ -92,14 +92,13 @@ export class RequisitionService {
         status,
         notes,
         bill_file_url,
-        placed_at,
         created_at,
         placed_by_user:users!placed_by (id, name, role, user_id),
-        vendor:vendors!vendor_id (id, name)
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office)
       `,
       )
       .range(offset, offset + limit - 1)
-      .order("placed_at", { ascending: false });
+      .order("created_at", { ascending: false });
     if (search) {
       dataQuery = dataQuery.or(
         `reference_number.ilike.%${search}%,notes.ilike.%${search}%`,
@@ -117,7 +116,6 @@ export class RequisitionService {
         status: item.status,
         notes: item.notes,
         bill_file_url: item.bill_file_url,
-        placed_at: item.placed_at,
         created_at: item.created_at,
         placed_by: item.placed_by_user,
         vendor: item.vendor,
@@ -167,15 +165,14 @@ export class RequisitionService {
         status,
         notes,
         bill_file_url,
-        placed_at,
         created_at,
         placed_by_user:users!placed_by (id, name, role, user_id),
-        vendor:vendors!vendor_id (id, name)
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office)
       `,
       )
       .eq("vendor_id", vendorId)
       .range(offset, offset + limit - 1)
-      .order("placed_at", { ascending: false });
+      .order("created_at", { ascending: false });
     if (search) {
       dataQuery = dataQuery.or(
         `reference_number.ilike.%${search}%,notes.ilike.%${search}%`,
@@ -193,7 +190,6 @@ export class RequisitionService {
         status: item.status,
         notes: item.notes,
         bill_file_url: item.bill_file_url,
-        placed_at: item.placed_at,
         created_at: item.created_at,
         placed_by: item.placed_by_user,
         vendor: item.vendor,

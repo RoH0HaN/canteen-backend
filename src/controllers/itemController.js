@@ -169,7 +169,7 @@ export const deleteItem = asyncHandler(async (req, res, next) => {
   }
 
   await ItemService.deleteItem(itemId);
-  res.status(200).json(new AppSuccess("Item deleted successfully", 200));
+  res.status(200).json(new AppSuccess("Item deleted successfully", null, 200));
 });
 
 /**
