@@ -94,9 +94,7 @@ export const createUser = asyncHandler(async (req, res, next) => {
 
   res
     .status(201)
-    .json(
-      new AppSuccess(201, "User created successfully", userWithoutPassword),
-    );
+    .json(new AppSuccess("User created successfully", userWithoutPassword));
 });
 
 /**
@@ -164,7 +162,7 @@ export const loginUser = asyncHandler(async (req, res, next) => {
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
     .json(
-      new AppSuccess(200, "Login successful", {
+      new AppSuccess("Login successful", {
         id: user.id,
         user_id: user.user_id,
         name: user.name,
@@ -215,7 +213,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .cookie("accessToken", accessToken, options)
-    .json(new AppSuccess(200, "Token refreshed"));
+    .json(new AppSuccess("Token refreshed"));
 });
 
 /**
@@ -242,7 +240,7 @@ export const logoutUser = asyncHandler(async (req, res, next) => {
     .status(200)
     .clearCookie("accessToken")
     .clearCookie("refreshToken")
-    .json(new AppSuccess(200, "Logout successful"));
+    .json(new AppSuccess("Logout successful"));
 });
 
 /**
@@ -269,7 +267,7 @@ export const logoutUser = asyncHandler(async (req, res, next) => {
 export const getCurrentUser = asyncHandler(async (req, res, next) => {
   const userId = req.user.id;
   const user = await UserService.getUserById(userId);
-  res.status(200).json(new AppSuccess(200, "User found", user));
+  res.status(200).json(new AppSuccess("User found", user));
 });
 
 /**
@@ -440,7 +438,7 @@ export const changeUserPassword = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess(`Password for ${updatedUser.name} changed`, null));
+    .json(new AppSuccess(`Password for ${updatedUser.name} changed`));
 });
 
 /**
@@ -484,5 +482,5 @@ export const getAllUsers = asyncHandler(async (req, res, next) => {
   const search = req.query.search || "";
 
   const result = await UserService.getAllUsers({ page, limit, search });
-  res.status(200).json(new AppSuccess(200, "Users retrieved", result));
+  res.status(200).json(new AppSuccess("Users retrieved", result));
 });

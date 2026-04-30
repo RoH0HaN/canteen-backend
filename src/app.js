@@ -8,11 +8,13 @@ import { corsMiddleware } from "./middlewares/cors.js";
 import { devLogger, prodLogger } from "./middlewares/logger.js";
 import { generalRateLimiter } from "./middlewares/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
+import cookieParser from "cookie-parser";
 
 // Route imports would go here
 import UserRoutes from "./routes/userRoutes.js";
 import VendorRoutes from "./routes/vendorRoutes.js";
-import cookieParser from "cookie-parser";
+import ItemRoutes from "./routes/itemRoutes.js";
+import RequisitionRoutes from "./routes/requisitionRoutes.js";
 
 export class App {
   constructor() {
@@ -60,6 +62,8 @@ export class App {
     // API routes will be added here
     this.app.use(`${initial}/users`, new UserRoutes().router);
     this.app.use(`${initial}/vendors`, new VendorRoutes().router);
+    this.app.use(`${initial}/items`, new ItemRoutes().router);
+    this.app.use(`${initial}/requisitions`, new RequisitionRoutes().router);
   }
 
   initializeErrorHandling() {

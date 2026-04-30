@@ -48,3 +48,70 @@ export const updateVendorSchema = Joi.object({
   trade_license: Joi.string().optional(),
   gst_no: Joi.string().optional(),
 });
+
+// Item
+export const createItemSchema = Joi.object({
+  name: Joi.string().required(),
+  unit: Joi.string().required(),
+  min_stock_level: Joi.number().required(),
+  opening_stock: Joi.number().required(),
+});
+
+export const updateItemSchema = Joi.object({
+  name: Joi.string().optional(),
+  unit: Joi.string().optional(),
+  min_stock_level: Joi.number().optional(),
+});
+
+// Requisition
+export const createRequisitionSchema = Joi.object({
+  vendor_id: Joi.number().required(),
+  notes: Joi.string().optional(),
+  items: Joi.array()
+    .items(
+      Joi.object({
+        item_id: Joi.number().required(),
+        required_quantity: Joi.number().required(),
+      }),
+    )
+    .required(),
+});
+
+export const approveRequisitionSchema = Joi.object({
+  items: Joi.array()
+    .items(
+      Joi.object({
+        id: Joi.number().required(),
+        approved_quantity: Joi.number().required(),
+        approval_remarks: Joi.string().optional(),
+      }),
+    )
+    .required(),
+});
+
+export const receiveRequisitionSchema = Joi.object({
+  items: Joi.array()
+    .items(
+      Joi.object({
+        id: Joi.number().required(),
+        received_quantity: Joi.number().required(),
+      }),
+    )
+    .required(),
+});
+
+export const updateRequisitionSchema = Joi.object({
+  vendor_id: Joi.number().required(),
+  notes: Joi.string().optional(),
+  items: Joi.array()
+    .items(
+      Joi.object({
+        item_id: Joi.number().required(),
+        required_quantity: Joi.number().optional(),
+        approved_quantity: Joi.number().optional(),
+        approval_remarks: Joi.string().optional(),
+        received_quantity: Joi.number().optional(),
+      }),
+    )
+    .required(),
+});

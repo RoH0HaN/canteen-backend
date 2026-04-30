@@ -1,0 +1,134 @@
+import { supabase } from "../config/supabase.js";
+import { cacheHelper } from "../utils/cacheHelper.js";
+
+export class ItemService {
+  // ----- Insert a new item (invalidate all item caches) -----
+  static async insertItem(itemData) {
+    const { data, error } = await supabase
+      .from("items")
+      .insert(itemData)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+
+    // Invalidate all item‑related caches
+    this._invalidateAllItemCaches();
+    return data;
+  }
+
+  // ----- Get item by ID (cached) -----
+  static async getItemById(id) {
+    const cacheKey = `item:id:${id}`;
+    let item = cacheHelper.get(cacheKey);
+    if (item) return item;
+
+    const { data, error } = await supabase
+      .from("items")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) cacheHelper.set(cacheKey, data);
+    return data;
+  }
+
+  // ----- Get item by name (cached) -----
+  static async getItemByName(name) {
+    const cacheKey = `item:name:${name}`;
+    let item = cacheHelper.get(cacheKey);
+    if (item) return item;
+
+    const { data, error } = await supabase
+      .from("items")
+      .select("*")
+      .eq("name", name)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) cacheHelper.set(cacheKey, data);
+    return data;
+  }
+
+  // ----- Update item (invalidate specific caches) -----
+  static async updateItem(id, updates) {
+    const { data, error } = await supabase
+      .from("items")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+
+    // Invalidate caches for this item (by id and by its old name if changed)
+    cacheHelper.del(`item:id:${id}`);
+    if (updates.name) cacheHelper.del(`item:name:${updates.name}`);
+    // Also invalidate aggregated lists
+    cacheHelper.delPattern("items:");
+    return data;
+  }
+
+  // ----- Delete item (invalidate caches) -----
+  static async deleteItem(id) {
+    const item = await this.getItemById(id);
+    if (!item) throw new Error("Item not found");
+
+    const { error } = await supabase.from("items").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    // Invalidate all item caches
+    this._invalidateAllItemCaches();
+  }
+
+  // ----- Get all items with pagination, optional search -----
+  static async getAllItems({ page = 1, limit = 10, search = "" } = {}) {
+    const offset = (page - 1) * limit;
+    const trimmedSearch = search.trim();
+
+    const cacheKey = `items:all:${page}:${limit}:${trimmedSearch}`;
+    const cached = cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
+    // Count total
+    let countQuery = supabase
+      .from("items")
+      .select("*", { count: "exact", head: true });
+    if (trimmedSearch) {
+      countQuery = countQuery.ilike("name", `%${trimmedSearch}%`);
+    }
+    const { count, error: countError } = await countQuery;
+    if (countError) throw new Error(countError.message);
+
+    // Fetch data
+    let dataQuery = supabase
+      .from("items")
+      .select("*")
+      .order("name", { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (trimmedSearch) {
+      dataQuery = dataQuery.ilike("name", `%${trimmedSearch}%`);
+    }
+    const { data, error } = await dataQuery;
+    if (error) throw new Error(error.message);
+
+    const totalPages = Math.ceil(count / limit);
+    const result = {
+      data,
+      pagination: {
+        page,
+        limit,
+        totalItems: count,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        search: trimmedSearch,
+      },
+    };
+    cacheHelper.set(cacheKey, result);
+    return result;
+  }
+
+  // ----- Helper: Invalidate all item caches -----
+  static _invalidateAllItemCaches() {
+    cacheHelper.delPattern("item:");
+    cacheHelper.delPattern("items:");
+  }
+}
