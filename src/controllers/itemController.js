@@ -48,7 +48,7 @@ export const createItem = asyncHandler(async (req, res, next) => {
     current_stock: opening_stock,
   });
 
-  res.status(201).json(new AppSuccess("Item created successfully", item));
+  res.status(201).json(new AppSuccess("Item created successfully", item, 201));
 });
 
 /**
@@ -83,7 +83,7 @@ export const getItemById = asyncHandler(async (req, res, next) => {
     return next(new AppError("Item not found", 404));
   }
 
-  res.status(200).json(new AppSuccess("Item fetched successfully", item));
+  res.status(200).json(new AppSuccess("Item fetched successfully", item, 200));
 });
 
 /**
@@ -140,7 +140,7 @@ export const updateItem = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess("Item updated successfully", updatedItem));
+    .json(new AppSuccess("Item updated successfully", updatedItem, 200));
 });
 
 /**
@@ -169,7 +169,7 @@ export const deleteItem = asyncHandler(async (req, res, next) => {
   }
 
   await ItemService.deleteItem(itemId);
-  res.status(200).json(new AppSuccess("Item deleted successfully"));
+  res.status(200).json(new AppSuccess("Item deleted successfully", 200));
 });
 
 /**
@@ -208,5 +208,7 @@ export const getAllItems = asyncHandler(async (req, res, next) => {
   const search = req.query.search || "";
 
   const result = await ItemService.getAllItems({ page, limit, search });
-  res.status(200).json(new AppSuccess("Items fetched successfully", result));
+  res
+    .status(200)
+    .json(new AppSuccess("Items fetched successfully", result, 200));
 });

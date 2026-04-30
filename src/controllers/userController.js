@@ -94,7 +94,9 @@ export const createUser = asyncHandler(async (req, res, next) => {
 
   res
     .status(201)
-    .json(new AppSuccess("User created successfully", userWithoutPassword));
+    .json(
+      new AppSuccess("User created successfully", userWithoutPassword, 201),
+    );
 });
 
 /**
@@ -162,13 +164,17 @@ export const loginUser = asyncHandler(async (req, res, next) => {
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
     .json(
-      new AppSuccess("Login successful", {
-        id: user.id,
-        user_id: user.user_id,
-        name: user.name,
-        role: user.role,
-        designation: user.designation,
-      }),
+      new AppSuccess(
+        "Login successful",
+        {
+          id: user.id,
+          user_id: user.user_id,
+          name: user.name,
+          role: user.role,
+          designation: user.designation,
+        },
+        200,
+      ),
     );
 });
 
@@ -213,7 +219,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .cookie("accessToken", accessToken, options)
-    .json(new AppSuccess("Token refreshed"));
+    .json(new AppSuccess("Token refreshed", 200));
 });
 
 /**
@@ -240,7 +246,7 @@ export const logoutUser = asyncHandler(async (req, res, next) => {
     .status(200)
     .clearCookie("accessToken")
     .clearCookie("refreshToken")
-    .json(new AppSuccess("Logout successful"));
+    .json(new AppSuccess("Logout successful", 200));
 });
 
 /**
@@ -267,7 +273,7 @@ export const logoutUser = asyncHandler(async (req, res, next) => {
 export const getCurrentUser = asyncHandler(async (req, res, next) => {
   const userId = req.user.id;
   const user = await UserService.getUserById(userId);
-  res.status(200).json(new AppSuccess("User found", user));
+  res.status(200).json(new AppSuccess("User found", user, 200));
 });
 
 /**
@@ -330,7 +336,7 @@ export const updateCurrentUser = asyncHandler(async (req, res, next) => {
   const updatedUser = await UserService.updateUser(userId, updateData);
   res
     .status(200)
-    .json(new AppSuccess(`User ${updatedUser.name} updated`, updatedUser));
+    .json(new AppSuccess(`User ${updatedUser.name} updated`, updatedUser, 200));
 });
 
 /**
@@ -361,7 +367,7 @@ export const blockUser = asyncHandler(async (req, res, next) => {
   const updatedUser = await UserService.updateUser(userId, {
     status: "blocked",
   });
-  res.status(200).json(new AppSuccess(`User ${updatedUser.name} blocked`));
+  res.status(200).json(new AppSuccess(`User ${updatedUser.name} blocked`, 200));
 });
 
 /**
@@ -392,7 +398,9 @@ export const unblockUser = asyncHandler(async (req, res, next) => {
   const updatedUser = await UserService.updateUser(userId, {
     status: "active",
   });
-  res.status(200).json(new AppSuccess(`User ${updatedUser.name} unblocked`));
+  res
+    .status(200)
+    .json(new AppSuccess(`User ${updatedUser.name} unblocked`, 200));
 });
 
 /**
@@ -438,7 +446,7 @@ export const changeUserPassword = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess(`Password for ${updatedUser.name} changed`));
+    .json(new AppSuccess(`Password for ${updatedUser.name} changed`, 200));
 });
 
 /**
@@ -482,5 +490,5 @@ export const getAllUsers = asyncHandler(async (req, res, next) => {
   const search = req.query.search || "";
 
   const result = await UserService.getAllUsers({ page, limit, search });
-  res.status(200).json(new AppSuccess("Users retrieved", result));
+  res.status(200).json(new AppSuccess("Users retrieved", result, 200));
 });

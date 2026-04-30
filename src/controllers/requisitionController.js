@@ -74,7 +74,9 @@ export const createRequisition = asyncHandler(async (req, res, next) => {
 
   res
     .status(201)
-    .json(new AppSuccess("Requisition created successfully", newRequisition));
+    .json(
+      new AppSuccess("Requisition created successfully", newRequisition, 201),
+    );
 });
 
 /**
@@ -137,7 +139,9 @@ export const getRequisitionById = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess("Requisition retrieved successfully", requisition));
+    .json(
+      new AppSuccess("Requisition retrieved successfully", requisition, 200),
+    );
 });
 
 /**
@@ -207,7 +211,9 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
     remarks: "Requisition approved",
   });
 
-  res.status(200).json(new AppSuccess("Requisition approved successfully"));
+  res
+    .status(200)
+    .json(new AppSuccess("Requisition approved successfully", 200));
 });
 
 /**
@@ -278,7 +284,7 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json(new AppSuccess("Requisition marked as received successfully"));
+    .json(new AppSuccess("Requisition marked as received successfully", 200));
 });
 
 /**
@@ -324,7 +330,7 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
     });
   }
 
-  res.status(200).json(new AppSuccess("Requisition updated successfully"));
+  res.status(200).json(new AppSuccess("Requisition updated successfully", 200));
 });
 
 /**
@@ -350,7 +356,7 @@ export const deleteRequisition = asyncHandler(async (req, res, next) => {
   if (!existing) return next(new AppError("Requisition not found", 404));
 
   await RequisitionService.deleteRequisition(requisitionId);
-  res.status(200).json(new AppSuccess("Requisition deleted successfully"));
+  res.status(200).json(new AppSuccess("Requisition deleted successfully", 200));
 });
 
 /**
@@ -377,7 +383,9 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
     return next(new AppError("Requisition item not found", 404));
 
   await RequisitionService.deleteRequisitionItem(itemId);
-  res.status(200).json(new AppSuccess("Requisition item deleted successfully"));
+  res
+    .status(200)
+    .json(new AppSuccess("Requisition item deleted successfully", 200));
 });
 
 /**
@@ -429,7 +437,7 @@ export const getAllRequisitions = asyncHandler(async (req, res, next) => {
   });
   res
     .status(200)
-    .json(new AppSuccess("Requisitions retrieved successfully", result));
+    .json(new AppSuccess("Requisitions retrieved successfully", result, 200));
 });
 
 /**
@@ -485,5 +493,5 @@ export const getRequisitionsByVendor = asyncHandler(async (req, res, next) => {
   });
   res
     .status(200)
-    .json(new AppSuccess("Requisitions retrieved successfully", result));
+    .json(new AppSuccess("Requisitions retrieved successfully", result, 200));
 });

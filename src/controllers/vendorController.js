@@ -62,7 +62,7 @@ export const createVendor = asyncHandler(async (req, res, next) => {
 
   res
     .status(201)
-    .json(new AppSuccess(`Vendor ${newVendor.name} created`, newVendor));
+    .json(new AppSuccess(`Vendor ${newVendor.name} created`, newVendor, 201));
 });
 
 /**
@@ -140,7 +140,11 @@ export const updateVendor = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .json(
-      new AppSuccess(`Vendor ${updatedVendor.name} updated`, updatedVendor),
+      new AppSuccess(
+        `Vendor ${updatedVendor.name} updated`,
+        updatedVendor,
+        200,
+      ),
     );
 });
 
@@ -176,7 +180,7 @@ export const getVendorById = asyncHandler(async (req, res, next) => {
     return next(new AppError("Vendor not found", 404));
   }
 
-  res.status(200).json(new AppSuccess("Vendor retrieved", vendor));
+  res.status(200).json(new AppSuccess("Vendor retrieved", vendor, 200));
 });
 
 /**
@@ -205,7 +209,7 @@ export const deleteVendor = asyncHandler(async (req, res, next) => {
   }
 
   await VendorService.deleteVendor(vendorId);
-  res.status(200).json(new AppSuccess(`Vendor ${vendor.name} deleted`));
+  res.status(200).json(new AppSuccess(`Vendor ${vendor.name} deleted`, 200));
 });
 
 /**
@@ -244,5 +248,5 @@ export const getVendors = asyncHandler(async (req, res, next) => {
   const search = req.query.search || "";
 
   const result = await VendorService.getVendors({ page, limit, search });
-  res.status(200).json(new AppSuccess("Vendors retrieved", result));
+  res.status(200).json(new AppSuccess("Vendors retrieved", result, 200));
 });
