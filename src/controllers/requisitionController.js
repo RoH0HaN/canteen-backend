@@ -117,6 +117,7 @@ export const createRequisition = asyncHandler(async (req, res, next) => {
  *       "type_of_organization": "Individual",
  *       "regd_office": "Nadia",
  *       "signature_url": "...."
+ *       "phone_number": "1234567890"
  *     },
  *     "items": [
  *       {
@@ -440,7 +441,7 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
  *         "notes": "Urgent restock",
  *         "placed_at": "2026-04-30T10:00:00Z",
  *         "placed_by": { "id": 3, "name": "Rohan Debnath", "role": "admin", "user_id": "ABC123" },
- *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "..." }
+ *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "...", "phone_number": "..." }
  *       }
  *     ],
  *     "pagination": {
@@ -493,7 +494,7 @@ export const getAllRequisitions = asyncHandler(async (req, res, next) => {
  *         "notes": "Urgent restock of rice",
  *         "placed_at": "2026-04-30T10:00:00Z",
  *         "placed_by": { "id": 3, "name": "Rohan Debnath", "role": "admin", "user_id": "ABC123" },
- *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "..." }
+ *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "...", "phone_number": "..." }
  *       }
  *     ],
  *     "pagination": {
@@ -552,7 +553,7 @@ export const getRequisitionsByVendor = asyncHandler(async (req, res, next) => {
  *         "notes": "Urgent restock of rice",
  *         "placed_at": "2026-04-30T10:00:00Z",
  *         "placed_by": { "id": 3, "name": "Rohan Debnath", "role": "admin", "user_id": "ABC123" },
- *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "..." }
+ *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "...", "phone_number": "..." }
  *       }
  *     ],
  *     "pagination": {

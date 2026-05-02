@@ -25,7 +25,7 @@ export class RequisitionService {
       .select(
         `
         *,
-        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, signature_url),
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, signature_url, phone_number),
         placed_by_user:users!placed_by (id, name, role, user_id, signature_url, designation),
         requisition_items (
           id,
@@ -94,7 +94,7 @@ export class RequisitionService {
         bill_file_url,
         created_at,
         placed_by_user:users!placed_by (id, name, role, user_id),
-        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office)
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, phone_number)
       `,
       )
       .range(offset, offset + limit - 1)
@@ -167,7 +167,7 @@ export class RequisitionService {
         bill_file_url,
         created_at,
         placed_by_user:users!placed_by (id, name, role, user_id),
-        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office)
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, phone_number)
       `,
       )
       .eq("status", status)
@@ -241,7 +241,7 @@ export class RequisitionService {
         bill_file_url,
         created_at,
         placed_by_user:users!placed_by (id, name, role, user_id),
-        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office)
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, phone_number)
       `,
       )
       .eq("vendor_id", vendorId)

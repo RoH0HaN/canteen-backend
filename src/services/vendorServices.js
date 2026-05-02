@@ -19,7 +19,7 @@ export class VendorService {
     return data;
   }
 
-  // ----- Vendor by PAN (cached – useful for duplicate check) -----
+  // ----- Vendor by PAN (cached) -----
   static async getVendorByPan(pan_number) {
     const cacheKey = `vendor:pan:${pan_number}`;
     let vendor = cacheHelper.get(cacheKey);
@@ -29,6 +29,23 @@ export class VendorService {
       .from("vendors")
       .select("*")
       .eq("pan_number", pan_number)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+
+    cacheHelper.set(cacheKey, data);
+    return data;
+  }
+
+  // ----- Vendor by Phone (cached) -----
+  static async getVendorByPhone(phone_number) {
+    const cacheKey = `vendor:phone:${phone_number}`;
+    let vendor = cacheHelper.get(cacheKey);
+    if (vendor !== undefined) return vendor; // cache hit (even if null)
+
+    const { data, error } = await supabase
+      .from("vendors")
+      .select("*")
+      .eq("phone_number", phone_number)
       .maybeSingle();
     if (error) throw new Error(error.message);
 
@@ -52,6 +69,10 @@ export class VendorService {
 
   // ----- Update vendor (clear caches for this vendor and lists) -----
   static async updateVendor(id, vendorData) {
+    // Fetch old vendor data to know previous PAN and phone for cache invalidation
+    const oldVendor = await this.getVendorById(id);
+    if (!oldVendor) throw new Error("Vendor not found");
+
     const { data, error } = await supabase
       .from("vendors")
       .update(vendorData)
@@ -60,27 +81,51 @@ export class VendorService {
       .single();
     if (error) throw new Error(error.message);
 
-    // Invalidate specific vendor cache and all list caches
+    // Invalidate specific vendor cache
     cacheHelper.del(`vendor:${id}`);
-    if (vendorData.pan_number) {
+
+    // Invalidate old PAN cache if changed
+    if (
+      vendorData.pan_number &&
+      vendorData.pan_number !== oldVendor.pan_number
+    ) {
+      cacheHelper.del(`vendor:pan:${oldVendor.pan_number}`);
       cacheHelper.del(`vendor:pan:${vendorData.pan_number}`);
+    } else if (oldVendor.pan_number) {
+      cacheHelper.del(`vendor:pan:${oldVendor.pan_number}`);
     }
+
+    // Invalidate old phone cache if changed
+    if (
+      vendorData.phone_number &&
+      vendorData.phone_number !== oldVendor.phone_number
+    ) {
+      cacheHelper.del(`vendor:phone:${oldVendor.phone_number}`);
+      cacheHelper.del(`vendor:phone:${vendorData.phone_number}`);
+    } else if (oldVendor.phone_number) {
+      cacheHelper.del(`vendor:phone:${oldVendor.phone_number}`);
+    }
+
+    // Invalidate all list caches
     cacheHelper.delPattern("vendors:");
     return data;
   }
 
-  // ----- Delete vendor (clear caches) -----
+  // ----- Delete vendor (clear all related caches) -----
   static async deleteVendor(id) {
-    // First get the vendor to know its PAN for cache deletion
     const vendor = await this.getVendorById(id);
-    if (vendor) {
-      cacheHelper.del(`vendor:${id}`);
-      if (vendor.pan_number) cacheHelper.del(`vendor:pan:${vendor.pan_number}`);
-    }
-    cacheHelper.delPattern("vendors:");
+    if (!vendor) throw new Error("Vendor not found");
 
+    // Delete from database
     const { error } = await supabase.from("vendors").delete().eq("id", id);
     if (error) throw new Error(error.message);
+
+    // Invalidate all caches related to this vendor
+    cacheHelper.del(`vendor:${id}`);
+    if (vendor.pan_number) cacheHelper.del(`vendor:pan:${vendor.pan_number}`);
+    if (vendor.phone_number)
+      cacheHelper.del(`vendor:phone:${vendor.phone_number}`);
+    cacheHelper.delPattern("vendors:");
   }
 
   // ----- Get all vendors with pagination & search (cached by query) -----

@@ -42,6 +42,16 @@ export const createVendor = asyncHandler(async (req, res, next) => {
     return next(new AppError("Vendor with this PAN already exists", 409));
   }
 
+  // Check for duplicate phone number
+  const existingPhone = await VendorService.getVendorByPhone(
+    value.phone_number,
+  );
+  if (existingPhone) {
+    return next(
+      new AppError("Vendor with this phone number already exists", 409),
+    );
+  }
+
   const vendorData = { ...value };
 
   // Handle optional file upload (vendor logo or document)
@@ -110,6 +120,24 @@ export const updateVendor = asyncHandler(async (req, res, next) => {
     if (panExists) {
       return next(
         new AppError("Another vendor with this PAN already exists", 409),
+      );
+    }
+  }
+
+  // If phone number is being updated, check uniqueness
+  if (
+    value.phone_number &&
+    value.phone_number !== existingVendor.phone_number
+  ) {
+    const phoneExists = await VendorService.getVendorByPhone(
+      value.phone_number,
+    );
+    if (phoneExists) {
+      return next(
+        new AppError(
+          "Another vendor with this phone number already exists",
+          409,
+        ),
       );
     }
   }

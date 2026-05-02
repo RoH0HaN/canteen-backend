@@ -28,6 +28,7 @@ export const changePasswordSchema = Joi.object({
 export const createVendorSchema = Joi.object({
   name: Joi.string().required(),
   address: Joi.string().required(),
+  phone_number: Joi.string().required(),
   regd_office: Joi.string().required(),
   type_of_organization: Joi.string().required(),
   pan_number: Joi.string().required(),
@@ -40,6 +41,7 @@ export const createVendorSchema = Joi.object({
 export const updateVendorSchema = Joi.object({
   name: Joi.string().optional(),
   address: Joi.string().optional(),
+  phone_number: Joi.string().optional(),
   regd_office: Joi.string().optional(),
   type_of_organization: Joi.string().optional(),
   pan_number: Joi.string().optional(),
