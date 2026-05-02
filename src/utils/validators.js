@@ -28,7 +28,7 @@ export const changePasswordSchema = Joi.object({
 export const createVendorSchema = Joi.object({
   name: Joi.string().required(),
   address: Joi.string().required(),
-  phone_number: Joi.string().required(),
+  phone_number: Joi.number().required(),
   regd_office: Joi.string().required(),
   type_of_organization: Joi.string().required(),
   pan_number: Joi.string().required(),
@@ -41,7 +41,7 @@ export const createVendorSchema = Joi.object({
 export const updateVendorSchema = Joi.object({
   name: Joi.string().optional(),
   address: Joi.string().optional(),
-  phone_number: Joi.string().optional(),
+  phone_number: Joi.number().optional(),
   regd_office: Joi.string().optional(),
   type_of_organization: Joi.string().optional(),
   pan_number: Joi.string().optional(),
@@ -104,17 +104,17 @@ export const receiveRequisitionSchema = Joi.object({
 });
 
 export const updateRequisitionSchema = Joi.object({
-  vendor_id: Joi.number().required(),
+  vendor_id: Joi.number().optional(),
   notes: Joi.string().optional(),
   total_amount: Joi.number().optional(),
   items: Joi.array()
     .items(
       Joi.object({
         id: Joi.number().required(),
-        required_quantity: Joi.number().optional(),
-        approved_quantity: Joi.number().optional(),
-        approval_remarks: Joi.string().optional(),
-        received_quantity: Joi.number().optional(),
+        required_quantity: Joi.number().required(),
+        approved_quantity: Joi.number().required(),
+        approval_remarks: Joi.string().allow("").optional(),
+        received_quantity: Joi.number().required(),
       }),
     )
     .required(),
@@ -132,4 +132,17 @@ export const createConsumptionSchema = Joi.object({
       }),
     )
     .required(),
+});
+
+export const updateConsumptionSchema = Joi.object({
+  purpose: Joi.string().optional(),
+  notes: Joi.string().optional(),
+  items: Joi.array()
+    .items(
+      Joi.object({
+        id: Joi.number().required(),
+        quantity: Joi.number().required(),
+      }),
+    )
+    .optional(),
 });

@@ -11,6 +11,7 @@ import {
   receiveRequisition,
   updateRequisition,
   getRequisitionsByStatus,
+  updateRequisitionBill,
 } from "../controllers/requisitionController.js";
 import { apiRateLimiter } from "../middlewares/rateLimit.js";
 import { authMiddleware } from "../middlewares/auth.js";
@@ -82,6 +83,13 @@ class RequisitionRoutes {
       apiRateLimiter,
       authMiddleware.authenticateToken,
       getRequisitionsByStatus,
+    );
+    this.router.put(
+      "/update-bill/:id",
+      apiRateLimiter,
+      authMiddleware.authenticateToken,
+      upload.singleFile,
+      updateRequisitionBill,
     );
   }
 }

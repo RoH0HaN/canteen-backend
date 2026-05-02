@@ -9,9 +9,10 @@ import {
   receiveRequisitionSchema,
   updateRequisitionSchema,
 } from "../utils/validators.js";
-import { uploadFile } from "../services/storageService.js";
+import { deleteFile, uploadFile } from "../services/storageService.js";
 import { v4 as uuidv4 } from "uuid";
 import { Enums } from "../utils/enums.js";
+import { ItemService } from "../services/itemService.js";
 
 /**
  * @desc    Create a new requisition
@@ -239,7 +240,16 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
   if (isNaN(requisitionId))
     return next(new AppError("Invalid requisition ID", 400));
 
-  req.body.items = JSON.parse(req.body.items);
+  // Parse items if string
+  if (req.body.items && typeof req.body.items === "string") {
+    try {
+      req.body.items = JSON.parse(req.body.items);
+    } catch (err) {
+      return next(
+        new AppError("Invalid items format. Must be a valid JSON array", 400),
+      );
+    }
+  }
 
   const { error, value } = receiveRequisitionSchema.validate(req.body);
   if (error) return next(new AppError(error.details[0].message, 400));
@@ -275,6 +285,11 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
     await RequisitionService.updateRequisitionItem(item.id, {
       received_quantity: item.received_quantity,
     });
+
+    await ItemService.incrementStock(
+      requisitionItem.item.id,
+      item.received_quantity,
+    );
   }
 
   const requisitionData = {
@@ -343,18 +358,49 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
 
   await RequisitionService.updateRequisition(requisitionId, requisitionData);
 
-  for (const item of items) {
-    const existingItem = existing.items.find((ri) => ri.id === item.id);
-    if (!existingItem)
-      return next(
-        new AppError(`Requisition item ID ${item.id} not found`, 404),
+  if (items && items.length) {
+    for (const item of items) {
+      const existingItem = existing.items.find((ri) => ri.id === item.id);
+      if (!existingItem)
+        return next(
+          new AppError(`Requisition item ID ${item.id} not found`, 404),
+        );
+
+      if (existingItem.current_stock < existingItem.received_quantity) {
+        return next(
+          new AppError(
+            `Insufficient stock for item ${existingItem.item_id}`,
+            400,
+          ),
+        );
+      }
+
+      // Decrement existing stock
+      const success = await ItemService.decrementStock(
+        existingItem.item.id,
+        existingItem.received_quantity,
       );
-    await RequisitionService.updateRequisitionItem(item.id, {
-      required_quantity: item.required_quantity,
-      approved_quantity: item.approved_quantity,
-      approval_remarks: item.approval_remarks,
-      received_quantity: item.received_quantity,
-    });
+
+      if (!success) {
+        return next(
+          new AppError(
+            `Insufficient stock for item ${existingItem.item_id}`,
+            400,
+          ),
+        );
+      }
+      await RequisitionService.updateRequisitionItem(item.id, {
+        required_quantity: item.required_quantity,
+        approved_quantity: item.approved_quantity,
+        approval_remarks: item.approval_remarks,
+        received_quantity: item.received_quantity,
+      });
+      // Increment new stock
+      await ItemService.incrementStock(
+        existingItem.item.id,
+        item.received_quantity,
+      );
+    }
   }
 
   res
@@ -384,6 +430,15 @@ export const deleteRequisition = asyncHandler(async (req, res, next) => {
   const existing = await RequisitionService.getRequisitionById(requisitionId);
   if (!existing) return next(new AppError("Requisition not found", 404));
 
+  if (existing.status === "received") {
+    return next(
+      new AppError(
+        "Only requisitions in 'Pending Approval' or 'Approved' status can be deleted",
+        400,
+      ),
+    );
+  }
+
   await RequisitionService.deleteRequisition(requisitionId);
   res
     .status(200)
@@ -412,6 +467,19 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
     await RequisitionService.getRequisitionItemById(itemId);
   if (!requisitionItem)
     return next(new AppError("Requisition item not found", 404));
+
+  const requisition = await RequisitionService.getRequisitionById(
+    requisitionItem.requisition_id,
+  );
+  if (!requisition) return next(new AppError("Requisition not found", 404));
+  if (requisition.status === "received") {
+    return next(
+      new AppError(
+        "Only requisitions in 'Pending Approval' or 'Approved' status can have items deleted",
+        400,
+      ),
+    );
+  }
 
   await RequisitionService.deleteRequisitionItem(itemId);
   res
@@ -585,4 +653,39 @@ export const getRequisitionsByStatus = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .json(new AppSuccess("Requisitions retrieved successfully", result, 200));
+});
+
+/**
+ * @desc    Update a requisition's bill file
+ * @route   PUT /api/v1/requisitions/update-bill/:id
+ * @access  Private (Vendor only)
+ * @param   {number} id - Requisition ID in URL
+ * @returns {AppSuccess} No data, only message
+ */
+export const updateRequisitionBill = asyncHandler(async (req, res, next) => {
+  const requisitionId = parseInt(req.params.id, 10);
+  if (isNaN(requisitionId))
+    return next(new AppError("Invalid requisition ID", 400));
+
+  if (!req.file) return next(new AppError("Please upload a file", 400));
+
+  const requisition =
+    await RequisitionService.getRequisitionById(requisitionId);
+  if (!requisition) return next(new AppError("Requisition not found", 404));
+
+  if (requisition.bill_file_url && requisition.bill_file_url !== "N/A") {
+    await deleteFile(requisition.bill_file_url);
+  }
+
+  try {
+    await RequisitionService.updateRequisition(requisitionId, {
+      bill_file_url: await uploadFile(req.file, `VENDOR/BILL/${uuidv4()}`),
+    });
+  } catch (uploadError) {
+    return next(new AppError(uploadError.message, 500));
+  }
+
+  res
+    .status(200)
+    .json(new AppSuccess("Requisition updated successfully", null, 200));
 });

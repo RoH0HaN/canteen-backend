@@ -126,6 +126,31 @@ export class ItemService {
     return result;
   }
 
+  static async decrementStock(itemId, quantity) {
+    const { data, error } = await supabase.rpc("decrement_stock", {
+      item_id: itemId,
+      quantity: quantity,
+    });
+    if (error) throw new Error(error.message);
+    if (data === true) {
+      // Invalidate caches for this item
+      cacheHelper.del(`item:id:${itemId}`);
+      cacheHelper.delPattern("items:"); // invalidate list caches
+    }
+    return data; // true = success, false = insufficient stock
+  }
+
+  static async incrementStock(itemId, quantity) {
+    const { error } = await supabase.rpc("increment_stock", {
+      item_id: itemId,
+      quantity: quantity,
+    });
+    if (error) throw new Error(error.message);
+    // Invalidate caches for this item
+    cacheHelper.del(`item:id:${itemId}`);
+    cacheHelper.delPattern("items:");
+  }
+
   // ----- Helper: Invalidate all item caches -----
   static _invalidateAllItemCaches() {
     cacheHelper.delPattern("item:");
