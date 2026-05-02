@@ -58,7 +58,7 @@ export const createUser = asyncHandler(async (req, res, next) => {
   // Check if user_id already exists
   const existingUser = await UserService.getUserByUserId(user_id);
   if (existingUser) {
-    return next(new AppError(`Validation error: User ID already exists`, 409));
+    return next(new AppError(`User ID already exists`, 409));
   }
 
   // Hash password before any other operation
@@ -155,7 +155,7 @@ export const loginUser = asyncHandler(async (req, res, next) => {
   const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 
@@ -167,6 +167,7 @@ export const loginUser = asyncHandler(async (req, res, next) => {
       new AppSuccess(
         "Login successful",
         {
+          accessToken,
           id: user.id,
           user_id: user.user_id,
           name: user.name,
@@ -212,7 +213,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 

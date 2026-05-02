@@ -135,6 +135,80 @@ export class RequisitionService {
     return result;
   }
 
+  static async getRequisitionsByStatus(
+    status,
+    { page = 1, limit = 10, search = "" } = {},
+  ) {
+    const cacheKey = `requisitions:vendor:${status}:${page}:${limit}:${search}`;
+    const cached = cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
+    const offset = (page - 1) * limit;
+    let countQuery = supabase
+      .from("requisitions")
+      .select("*", { count: "exact", head: true })
+      .eq("status", status);
+    if (search) {
+      countQuery = countQuery.or(
+        `reference_number.ilike.%${search}%,notes.ilike.%${search}%`,
+      );
+    }
+    const { count, error: countErr } = await countQuery;
+    if (countErr) throw new Error(countErr.message);
+
+    let dataQuery = supabase
+      .from("requisitions")
+      .select(
+        `
+        id,
+        reference_number,
+        status,
+        notes,
+        bill_file_url,
+        created_at,
+        placed_by_user:users!placed_by (id, name, role, user_id),
+        vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office)
+      `,
+      )
+      .eq("status", status)
+      .range(offset, offset + limit - 1)
+      .order("created_at", { ascending: false });
+    if (search) {
+      dataQuery = dataQuery.or(
+        `reference_number.ilike.%${search}%,notes.ilike.%${search}%`,
+      );
+    }
+
+    const { data, error } = await dataQuery;
+    if (error) throw new Error(error.message);
+
+    const totalPages = Math.ceil(count / limit);
+    const result = {
+      data: data.map((item) => ({
+        id: item.id,
+        reference_number: item.reference_number,
+        status: item.status,
+        notes: item.notes,
+        bill_file_url: item.bill_file_url,
+        created_at: item.created_at,
+        placed_by: item.placed_by_user,
+        vendor: item.vendor,
+        // items are omitted for list view (fetch single if needed)
+      })),
+      pagination: {
+        page,
+        limit,
+        totalItems: count,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        search,
+      },
+    };
+    cacheHelper.set(cacheKey, result);
+    return result;
+  }
+
   static async getRequisitionsByVendorId(
     vendorId,
     { page = 1, limit = 10, search = "" } = {},

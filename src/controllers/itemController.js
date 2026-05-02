@@ -113,17 +113,14 @@ export const updateItem = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid item ID", 400));
   }
 
-  // Use updateItemSchema (should be defined; fallback to createItemSchema if not)
-  const { error, value } = (updateItemSchema || createItemSchema).validate(
-    req.body,
-  );
+  const { error, value } = updateItemSchema.validate(req.body);
   if (error) {
     return next(
       new AppError(`Validation error: ${error.details[0].message}`, 400),
     );
   }
 
-  const { name, unit, min_stock_level, opening_stock } = value;
+  const { name, unit, min_stock_level } = value;
 
   const existingItem = await ItemService.getItemByName(name);
   if (existingItem && existingItem.id !== itemId) {
@@ -134,8 +131,6 @@ export const updateItem = asyncHandler(async (req, res, next) => {
     name,
     unit,
     min_stock_level,
-    opening_stock,
-    // Note: current_stock is NOT updated here; it's managed separately via stock adjustments
   });
 
   res

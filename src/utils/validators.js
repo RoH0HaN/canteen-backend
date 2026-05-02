@@ -117,3 +117,17 @@ export const updateRequisitionSchema = Joi.object({
     )
     .required(),
 });
+
+// Consumption
+export const createConsumptionSchema = Joi.object({
+  purpose: Joi.string().required(),
+  notes: Joi.string().optional(),
+  items: Joi.array()
+    .items(
+      Joi.object({
+        item_id: Joi.number().required(),
+        quantity: Joi.number().required(),
+      }),
+    )
+    .required(),
+});

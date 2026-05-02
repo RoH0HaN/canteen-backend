@@ -11,6 +11,7 @@ import {
 } from "../utils/validators.js";
 import { uploadFile } from "../services/storageService.js";
 import { v4 as uuidv4 } from "uuid";
+import { Enums } from "../utils/enums.js";
 
 /**
  * @desc    Create a new requisition
@@ -390,9 +391,9 @@ export const deleteRequisition = asyncHandler(async (req, res, next) => {
 
 /**
  * @desc    Delete a single item from a requisition (only if still pending approval)
- * @route   DELETE /api/v1/requisitions/items/delete/:itemId
+ * @route   DELETE /api/v1/requisitions/delete-item/:id
  * @access  Private (Admin/Manager)
- * @param   {number} itemId - Requisition item ID in URL
+ * @param   {number} id - Requisition item ID in URL
  * @returns {AppSuccess} No data, only message
  *
  * @example Response (200 OK)
@@ -419,7 +420,7 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
 
 /**
  * @desc    Get all requisitions with pagination & optional search
- * @route   GET /api/v1/requisitions?page=1&limit=10&search=REQ-2026
+ * @route   GET /api/v1/requisitions/list?page=1&limit=10&search=REQ-2026
  * @access  Public
  * @param   {number} page - Page number (default 1)
  * @param   {number} limit - Items per page (default 10)
@@ -438,8 +439,8 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
  *         "status": "pending_approval",
  *         "notes": "Urgent restock",
  *         "placed_at": "2026-04-30T10:00:00Z",
- *         "placed_by": { "id": 3, "name": "Rohan Debnath" },
- *         "vendor": { "id": 2, "name": "Gunjan Das" }
+ *         "placed_by": { "id": 3, "name": "Rohan Debnath", "role": "admin", "user_id": "ABC123" },
+ *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "..." }
  *       }
  *     ],
  *     "pagination": {
@@ -471,7 +472,7 @@ export const getAllRequisitions = asyncHandler(async (req, res, next) => {
 
 /**
  * @desc    Get all requisitions for a specific vendor (paginated & searchable)
- * @route   GET /api/v1/vendors/:vendorId/requisitions?page=1&limit=10&search=rice
+ * @route   GET /api/v1/requisitions/list-by-vendor/:id?page=1&limit=10&search=rice
  * @access  Public
  * @param   {number} vendorId - Vendor ID in URL
  * @param   {number} page - Page number (default 1)
@@ -491,8 +492,8 @@ export const getAllRequisitions = asyncHandler(async (req, res, next) => {
  *         "status": "approved",
  *         "notes": "Urgent restock of rice",
  *         "placed_at": "2026-04-30T10:00:00Z",
- *         "placed_by": { "id": 3, "name": "Rohan Debnath" },
- *         "vendor": { "id": 2, "name": "Gunjan Das" }
+ *         "placed_by": { "id": 3, "name": "Rohan Debnath", "role": "admin", "user_id": "ABC123" },
+ *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "..." }
  *       }
  *     ],
  *     "pagination": {
@@ -519,6 +520,63 @@ export const getRequisitionsByVendor = asyncHandler(async (req, res, next) => {
   if (!vendor) return next(new AppError("Vendor not found", 404));
 
   const result = await RequisitionService.getRequisitionsByVendorId(vendorId, {
+    page,
+    limit,
+    search,
+  });
+  res
+    .status(200)
+    .json(new AppSuccess("Requisitions retrieved successfully", result, 200));
+});
+
+/**
+ * @desc    Get all requisitions of a specific status (paginated & searchable)
+ * @route   GET /api/v1/vendors/requisitions/get-by-status?status=approved&page=1&limit=10&search=rice
+ * @access  Public
+ * @param   {number} status - Status in query
+ * @param   {number} page - Page number (default 1)
+ * @param   {number} limit - Items per page (default 10)
+ * @param   {string} search - Search by reference number or notes (optional)
+ * @returns {AppSuccess} Paginated list of requisitions for that vendor
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Requisitions retrieved successfully",
+ *   "data": {
+ *     "data": [
+ *       {
+ *         "id": 5,
+ *         "reference_number": "REQ-1734567890123-456",
+ *         "status": "approved",
+ *         "notes": "Urgent restock of rice",
+ *         "placed_at": "2026-04-30T10:00:00Z",
+ *         "placed_by": { "id": 3, "name": "Rohan Debnath", "role": "admin", "user_id": "ABC123" },
+ *         "vendor": { "id": 2, "name": "Gunjan Das",  "address": "...", "pan_number": "...", "type_of_organization": "...", "regd_office": "..." }
+ *       }
+ *     ],
+ *     "pagination": {
+ *       "page": 1,
+ *       "limit": 10,
+ *       "totalItems": 8,
+ *       "totalPages": 1,
+ *       "hasNextPage": false,
+ *       "hasPrevPage": false,
+ *       "search": "rice"
+ *     }
+ *   }
+ * }
+ */
+export const getRequisitionsByStatus = asyncHandler(async (req, res, next) => {
+  const status = req.query.status;
+  if (!status || !Enums.requisitionStatus.includes(status))
+    return next(new AppError("Invalid status", 400));
+
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10;
+  const search = req.query.search || "";
+
+  const result = await RequisitionService.getRequisitionsByStatus(status, {
     page,
     limit,
     search,

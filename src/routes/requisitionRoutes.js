@@ -10,6 +10,7 @@ import {
   getRequisitionsByVendor,
   receiveRequisition,
   updateRequisition,
+  getRequisitionsByStatus,
 } from "../controllers/requisitionController.js";
 import { apiRateLimiter } from "../middlewares/rateLimit.js";
 import { authMiddleware } from "../middlewares/auth.js";
@@ -75,6 +76,12 @@ class RequisitionRoutes {
       apiRateLimiter,
       authMiddleware.authenticateToken,
       deleteRequisitionItem,
+    );
+    this.router.get(
+      "/list-by-status",
+      apiRateLimiter,
+      authMiddleware.authenticateToken,
+      getRequisitionsByStatus,
     );
   }
 }

@@ -48,7 +48,10 @@ export const authMiddleware = {
   authenticateToken: async (req, res, next) => {
     try {
       const authHeader = req.headers["authorization"];
-      const token = authHeader && authHeader.split(" ")[1];
+
+      const bearerToken = authHeader && authHeader.split(" ")[1];
+      const cookieToken = req.cookies?.accessToken;
+      const token = bearerToken || cookieToken;
 
       if (!token) {
         throw new AppError("Access token required", 401);
