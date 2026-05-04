@@ -32,7 +32,6 @@ export class ConsumptionService {
       id: data.id,
       purpose: data.purpose,
       notes: data.notes,
-      placed_at: data.placed_at,
       created_at: data.created_at,
       updated_at: data.updated_at,
       placed_by: data.placed_by_user,
@@ -118,12 +117,11 @@ export class ConsumptionService {
         id,
         purpose,
         notes,
-        placed_at,
         created_at,
         placed_by_user:users!placed_by (id, name, user_id, designation, role, signature_url)
       `,
       )
-      .order("placed_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
     if (trimmedSearch) {
       dataQuery = dataQuery.or(

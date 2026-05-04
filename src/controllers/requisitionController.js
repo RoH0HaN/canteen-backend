@@ -661,6 +661,13 @@ export const getRequisitionsByStatus = asyncHandler(async (req, res, next) => {
  * @access  Private (Vendor only)
  * @param   {number} id - Requisition ID in URL
  * @returns {AppSuccess} No data, only message
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Requisition updated successfully",
+ *   "data": null
+ * }
  */
 export const updateRequisitionBill = asyncHandler(async (req, res, next) => {
   const requisitionId = parseInt(req.params.id, 10);
