@@ -1,5 +1,5 @@
-import express from "express";
-import upload from "../middlewares/upload.js";
+import express from 'express';
+import upload from '../middlewares/upload.js';
 import {
   createUser,
   loginUser,
@@ -11,9 +11,9 @@ import {
   unblockUser,
   updateCurrentUser,
   getAllUsers,
-} from "../controllers/userController.js";
-import { authRateLimiter, apiRateLimiter } from "../middlewares/rateLimit.js";
-import { authMiddleware } from "../middlewares/auth.js";
+} from '../controllers/userController.js';
+import { authRateLimiter, apiRateLimiter } from '../middlewares/rateLimit.js';
+import { authMiddleware } from '../middlewares/auth.js';
 
 class UserRoutes {
   constructor() {
@@ -23,43 +23,43 @@ class UserRoutes {
 
   initializeRoutes() {
     this.router.post(
-      "/create",
+      '/create',
       apiRateLimiter,
       authMiddleware.authenticateToken,
       upload.singleFile,
       createUser,
     );
-    this.router.post("/login", authRateLimiter, loginUser);
-    this.router.post("/refresh-token", refreshToken);
-    this.router.post("/logout", logoutUser);
-    this.router.get("/me", authMiddleware.authenticateToken, getCurrentUser);
+    this.router.post('/login', loginUser);
+    this.router.post('/refresh-token', refreshToken);
+    this.router.post('/logout', logoutUser);
+    this.router.get('/me', authMiddleware.authenticateToken, getCurrentUser);
     this.router.put(
-      "/update/:id",
+      '/update/:id',
       apiRateLimiter,
       authMiddleware.authenticateToken,
       upload.singleFile,
       updateCurrentUser,
     );
     this.router.put(
-      "/change-password",
+      '/change-password',
       apiRateLimiter,
       authMiddleware.authenticateToken,
       changeUserPassword,
     );
     this.router.put(
-      "/block/:id",
+      '/block/:id',
       apiRateLimiter,
       authMiddleware.authenticateToken,
       blockUser,
     );
     this.router.put(
-      "/unblock/:id",
+      '/unblock/:id',
       apiRateLimiter,
       authMiddleware.authenticateToken,
       unblockUser,
     );
     this.router.get(
-      "/list",
+      '/list',
       apiRateLimiter,
       authMiddleware.authenticateToken,
       getAllUsers,
