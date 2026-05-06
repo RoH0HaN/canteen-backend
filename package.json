@@ -1,10 +1,11 @@
 {
-  "name": "com.jisgroup.canteen",
+  "name": "canteen-backend",
   "version": "1.0.0",
   "description": "This is an industry-standard backend for canteen inventory system using Node.js (ES Modules) + Express + Supabase (Database + Storage). The system will manage goods, track stock, record purchase (restock) with vendor bill uploads, and handle goods issuance with stock validation.",
   "main": "server.js",
   "type": "module",
   "scripts": {
+    "start": "node src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon src/server.js"
   },

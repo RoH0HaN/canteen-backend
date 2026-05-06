@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { supabase } from "../config/supabase.js";
-import { AppError } from "../utils/AppError.js";
+import { AppError } from "../utils/appError.js";
 import NodeCache from "node-cache";
 
 // Cache for blacklisted refresh tokens (TTL in seconds)
