@@ -12,7 +12,6 @@ import {
   updateCurrentUser,
   getAllUsers,
 } from "../controllers/userController.js";
-import { authRateLimiter, apiRateLimiter } from "../middlewares/rateLimit.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
 class UserRoutes {
@@ -24,7 +23,6 @@ class UserRoutes {
   initializeRoutes() {
     this.router.post(
       "/create",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       upload.singleFile,
       createUser,
@@ -35,35 +33,22 @@ class UserRoutes {
     this.router.get("/me", authMiddleware.authenticateToken, getCurrentUser);
     this.router.put(
       "/update/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       upload.singleFile,
       updateCurrentUser,
     );
     this.router.put(
       "/change-password",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       changeUserPassword,
     );
-    this.router.put(
-      "/block/:id",
-      apiRateLimiter,
-      authMiddleware.authenticateToken,
-      blockUser,
-    );
+    this.router.put("/block/:id", authMiddleware.authenticateToken, blockUser);
     this.router.put(
       "/unblock/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       unblockUser,
     );
-    this.router.get(
-      "/list",
-      apiRateLimiter,
-      authMiddleware.authenticateToken,
-      getAllUsers,
-    );
+    this.router.get("/list", authMiddleware.authenticateToken, getAllUsers);
   }
 }
 export default UserRoutes;

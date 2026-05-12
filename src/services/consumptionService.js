@@ -148,6 +148,69 @@ export class ConsumptionService {
     return result;
   }
 
+  static async getConsumptionsByStatus(
+    status,
+    { page = 1, limit = 10, search = "" } = {},
+  ) {
+    const cacheKey = `consumptions:${status}:${page}:${limit}:${search}`;
+    const cached = cacheHelper.get(cacheKey);
+    if (cached) return cached;
+
+    const offset = (page - 1) * limit;
+    const trimmedSearch = search.trim();
+
+    // Count total
+    let countQuery = supabase
+      .from("consumption_events")
+      .select("*", { count: "exact", head: true })
+      .eq("status", status);
+    if (trimmedSearch) {
+      countQuery = countQuery.or(
+        `purpose.ilike.%${trimmedSearch}%,notes.ilike.%${trimmedSearch}%`,
+      );
+    }
+    const { count, error: countErr } = await countQuery;
+    if (countErr) throw new Error(countErr.message);
+
+    // Fetch paginated data with basic joins (no items for list view)
+    let dataQuery = supabase
+      .from("consumption_events")
+      .select(
+        `
+        id,
+        purpose,
+        notes,
+        created_at,
+        placed_by_user:users!placed_by (id, name, user_id, designation, role, signature_url)
+      `,
+      )
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (trimmedSearch) {
+      dataQuery = dataQuery.or(
+        `purpose.ilike.%${trimmedSearch}%,notes.ilike.%${trimmedSearch}%`,
+      );
+    }
+    const { data, error } = await dataQuery;
+    if (error) throw new Error(error.message);
+
+    const totalPages = Math.ceil(count / limit);
+    const result = {
+      data,
+      pagination: {
+        page,
+        limit,
+        totalItems: count,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        search: trimmedSearch,
+      },
+    };
+    cacheHelper.set(cacheKey, result);
+    return result;
+  }
+
   // ---------- Consumption Items ----------
   static async insertConsumptionItem(itemData) {
     const { data, error } = await supabase
@@ -197,6 +260,53 @@ export class ConsumptionService {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (data) cacheHelper.set(cacheKey, data);
+    return data;
+  }
+
+  // ---------- Generate Reference Number ----------
+  static async generateConsumptionReferenceNumber() {
+    // Get current date in DDMMYYYY format (local time, consistent with server)
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, "0");
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const year = now.getFullYear();
+    const dateStr = `${day}${month}${year}`;
+
+    // Query count of consumption events created today (using created_at column)
+    // Use date range from start of day to end of day in local timezone
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+    );
+
+    const { count, error } = await supabase
+      .from("consumption_events")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", startOfDay.toISOString())
+      .lt("created_at", endOfDay.toISOString());
+
+    if (error)
+      throw new Error(`Failed to count consumptions: ${error.message}`);
+
+    const nextSeq = (count || 0) + 1;
+    const seqPadded = String(nextSeq).padStart(3, "0");
+
+    return `CON-${dateStr}-${seqPadded}`;
+  }
+
+  // ---------- Status Log ----------
+  static async insertConsumptionStatusLog(logData) {
+    const { data, error } = await supabase
+      .from("consumption_status_log")
+      .insert(logData)
+      .select();
+    if (error) throw new Error(error.message);
     return data;
   }
 }

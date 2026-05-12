@@ -123,7 +123,7 @@ export const updateRequisitionSchema = Joi.object({
 // Consumption
 export const createConsumptionSchema = Joi.object({
   purpose: Joi.string().required(),
-  notes: Joi.string().optional(),
+  notes: Joi.string().allow("").optional(),
   items: Joi.array()
     .items(
       Joi.object({
@@ -134,9 +134,21 @@ export const createConsumptionSchema = Joi.object({
     .required(),
 });
 
+export const approveConsumptionSchema = Joi.object({
+  items: Joi.array()
+    .items(
+      Joi.object({
+        id: Joi.number().required(),
+        approved_quantity: Joi.number().required(),
+        approval_remarks: Joi.string().allow("").optional(),
+      }),
+    )
+    .required(),
+});
+
 export const updateConsumptionSchema = Joi.object({
   purpose: Joi.string().optional(),
-  notes: Joi.string().optional(),
+  notes: Joi.string().allow("").optional(),
   items: Joi.array()
     .items(
       Joi.object({

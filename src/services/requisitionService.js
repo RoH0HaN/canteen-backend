@@ -137,7 +137,7 @@ export class RequisitionService {
 
   static async getRequisitionsByStatus(
     status,
-    { page = 1, limit = 10, search = "" } = {},
+    { page = 1, limit = 10, search = "", userId = null } = {},
   ) {
     const cacheKey = `requisitions:vendor:${status}:${page}:${limit}:${search}`;
     const cached = cacheHelper.get(cacheKey);
@@ -173,10 +173,14 @@ export class RequisitionService {
       .eq("status", status)
       .range(offset, offset + limit - 1)
       .order("created_at", { ascending: false });
+
     if (search) {
       dataQuery = dataQuery.or(
         `reference_number.ilike.%${search}%,notes.ilike.%${search}%`,
       );
+    }
+    if (userId) {
+      dataQuery = dataQuery.eq("placed_by", userId);
     }
 
     const { data, error } = await dataQuery;
@@ -304,6 +308,18 @@ export class RequisitionService {
     this._invalidateRequisitionCache(requisitionId);
   }
 
+  static async toggleShowPdf(requisitionId, status) {
+    const { data, error } = await supabase
+      .from("requisitions")
+      .update({ show_pdf: status })
+      .eq("id", requisitionId)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    this._invalidateRequisitionCache(requisitionId);
+    return data;
+  }
+
   // ---------- Requisition Items ----------
   static async insertRequisitionItems(itemsData) {
     const { data, error } = await supabase
@@ -368,6 +384,43 @@ export class RequisitionService {
     if (logData.requisition_id)
       this._invalidateRequisitionCache(logData.requisition_id);
     return data;
+  }
+
+  // ---------- Generate Reference Number ----------
+  static async generateRequisitionReferenceNumber() {
+    // Get current date in DDMMYYYY format (local time, consistent with server)
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, "0");
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const year = now.getFullYear();
+    const dateStr = `${day}${month}${year}`;
+
+    // Query count of requisitions created today (using created_at column)
+    // Use date range from start of day to end of day in local timezone
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+    );
+
+    const { count, error } = await supabase
+      .from("requisitions")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", startOfDay.toISOString())
+      .lt("created_at", endOfDay.toISOString());
+
+    if (error)
+      throw new Error(`Failed to count requisitions: ${error.message}`);
+
+    const nextSeq = (count || 0) + 1;
+    const seqPadded = String(nextSeq).padStart(3, "0");
+
+    return `REQ-${dateStr}-${seqPadded}`;
   }
 
   // ---------- Cache Helpers ----------

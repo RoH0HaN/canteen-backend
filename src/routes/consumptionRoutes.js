@@ -6,8 +6,9 @@ import {
   getAllConsumptions,
   getConsumptionById,
   updateConsumption,
+  approveConsumption,
+  getConsumptionsByStatus,
 } from "../controllers/consumptionController.js";
-import { apiRateLimiter } from "../middlewares/rateLimit.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
 class ConsumptionRoutes {
@@ -19,33 +20,38 @@ class ConsumptionRoutes {
   initializeRoutes() {
     this.router.post(
       "/create",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       createConsumption,
     );
     this.router.get(
       "/list",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       getAllConsumptions,
     );
     this.router.get(
       "/get/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       getConsumptionById,
     );
     this.router.put(
       "/update/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       updateConsumption,
     );
     this.router.delete(
       "/delete/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       deleteConsumption,
+    );
+    this.router.put(
+      "/approve/:id",
+      authMiddleware.authenticateToken,
+      approveConsumption,
+    );
+    this.router.get(
+      "/list-by-status",
+      authMiddleware.authenticateToken,
+      getConsumptionsByStatus,
     );
   }
 }

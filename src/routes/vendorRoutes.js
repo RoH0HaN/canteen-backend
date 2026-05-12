@@ -7,7 +7,6 @@ import {
   getVendors,
   updateVendor,
 } from "../controllers/vendorController.js";
-import { apiRateLimiter } from "../middlewares/rateLimit.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
 class VendorRoutes {
@@ -19,33 +18,24 @@ class VendorRoutes {
   initializeRoutes() {
     this.router.post(
       "/create",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       upload.singleFile,
       createVendor,
     );
     this.router.put(
       "/update/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       upload.singleFile,
       updateVendor,
     );
     this.router.get(
       "/get/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       getVendorById,
     );
-    this.router.get(
-      "/list",
-      apiRateLimiter,
-      authMiddleware.authenticateToken,
-      getVendors,
-    );
+    this.router.get("/list", authMiddleware.authenticateToken, getVendors);
     this.router.delete(
       "/delete/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       deleteVendor,
     );

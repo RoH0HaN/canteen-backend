@@ -45,7 +45,8 @@ export const createRequisition = asyncHandler(async (req, res, next) => {
   );
   if (!existingVendor) return next(new AppError("Vendor not found", 404));
 
-  const referenceNumber = `REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const referenceNumber =
+    await RequisitionService.generateRequisitionReferenceNumber();
   requisitionData.reference_number = referenceNumber;
   requisitionData.placed_by = req.user.id;
 
@@ -71,15 +72,66 @@ export const createRequisition = asyncHandler(async (req, res, next) => {
   await RequisitionService.insertRequisitionStatusLog({
     requisition_id: newRequisition.id,
     old_status: null,
-    new_status: "pending_approval",
+    new_status: "draft",
     changed_by: req.user.id,
-    remarks: "Requisition created",
+    remarks: "Requisition drafted",
   });
 
   res
     .status(201)
     .json(
-      new AppSuccess("Requisition created successfully", newRequisition, 201),
+      new AppSuccess("Requisition drafed successfully", newRequisition, 201),
+    );
+});
+
+/**
+ * @desc    Submit a final requisition for approval (Manager only)
+ * @route   PUT /api/v1/requisitions/submit-final-requisition/:id
+ * @access  Private (Manager only)
+ * @param   {number} id - Requisition ID in URL
+ * @returns {AppSuccess} No data, only message
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Requisition submitted for approval successfully",
+ *   "data": null
+ * }
+ */
+export const submitFinalRequisition = asyncHandler(async (req, res, next) => {
+  const requisitionId = parseInt(req.params.id, 10);
+  if (isNaN(requisitionId))
+    return next(new AppError("Invalid requisition ID", 400));
+
+  const requisition =
+    await RequisitionService.getRequisitionById(requisitionId);
+  if (!requisition) return next(new AppError("Requisition not found", 404));
+
+  if (requisition.status !== "draft")
+    return next(new AppError("Requisition is not in draft status", 400));
+
+  if (!requisition.show_pdf)
+    return next(new AppError("PDF preview (submission) not viewd", 400));
+
+  await RequisitionService.updateRequisitionStatus(requisitionId, {
+    status: "pending_approval",
+    show_pdf: false,
+  });
+  await RequisitionService.insertRequisitionStatusLog({
+    requisition_id: requisitionId,
+    old_status: "draft",
+    new_status: "pending_approval",
+    changed_by: req.user.id,
+    remarks: "Requisition submitted for approval",
+  });
+  res
+    .status(200)
+    .json(
+      new AppSuccess(
+        "Requisition submitted for approval successfully",
+        null,
+        200,
+      ),
     );
 });
 
@@ -152,7 +204,7 @@ export const getRequisitionById = asyncHandler(async (req, res, next) => {
 /**
  * @desc    Approve a requisition (Manager only)
  * @route   PUT /api/v1/requisitions/approve/:id
- * @access  Private (Manager only)
+ * @access  Private (Canteen Incharge only)
  * @param   {number} id - Requisition ID in URL
  * @returns {AppSuccess} No data, only message
  *
@@ -185,6 +237,9 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
     );
   }
 
+  if (!requisition.show_pdf)
+    return next(new AppError("PDF preview (approval) not viewd", 400));
+
   for (const item of items) {
     const requisitionItem = requisition.items.find((ri) => ri.id === item.id);
     if (!requisitionItem)
@@ -207,6 +262,7 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
 
   await RequisitionService.updateRequisition(requisitionId, {
     status: "approved",
+    show_pdf: false,
   });
   await RequisitionService.insertRequisitionStatusLog({
     requisition_id: requisitionId,
@@ -268,6 +324,9 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
     );
   }
 
+  if (!requisition.show_pdf)
+    return next(new AppError("PDF preview (receive) not viewd", 400));
+
   for (const item of items) {
     const requisitionItem = requisition.items.find((ri) => ri.id === item.id);
     if (!requisitionItem)
@@ -295,6 +354,7 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
   const requisitionData = {
     status: "received",
     total_amount: total_amount || requisition.total_amount,
+    show_pdf: false,
   };
   // Handle optional file upload (vendor bill or delivery challan)
   if (req.file) {
@@ -649,7 +709,9 @@ export const getRequisitionsByStatus = asyncHandler(async (req, res, next) => {
     page,
     limit,
     search,
+    userId: status === "draft" ? req.user.id : undefined,
   });
+
   res
     .status(200)
     .json(new AppSuccess("Requisitions retrieved successfully", result, 200));
@@ -695,4 +757,32 @@ export const updateRequisitionBill = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .json(new AppSuccess("Requisition updated successfully", null, 200));
+});
+
+/**
+ * @desc    Show a requisition's PDF
+ * @route   PUT /api/v1/requisitions/show-pdf/:id
+ * @access  Public
+ * @param   {number} id - Requisition ID in URL
+ * @returns {AppSuccess} No data, only message
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "PDF viewed successfully",
+ *   "data": null
+ * }
+ */
+export const showPdf = asyncHandler(async (req, res, next) => {
+  const requisitionId = parseInt(req.params.id, 10);
+  if (isNaN(requisitionId))
+    return next(new AppError("Invalid requisition ID", 400));
+
+  const requisition =
+    await RequisitionService.getRequisitionById(requisitionId);
+  if (!requisition) return next(new AppError("Requisition not found", 404));
+
+  await RequisitionService.toggleShowPdf(requisitionId, true);
+
+  res.status(200).json(new AppSuccess("PDF viewed successfully", null, 200));
 });

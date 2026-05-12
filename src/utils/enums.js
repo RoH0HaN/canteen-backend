@@ -9,5 +9,12 @@ export class Enums {
 
   static userStatus = ["active", "blocked"];
 
-  static requisitionStatus = ["pending_approval", "approved", "received"];
+  static requisitionStatus = [
+    "draft",
+    "pending_approval",
+    "approved",
+    "received",
+  ];
+
+  static consumptionStatus = ["pending_approval", "approved"];
 }

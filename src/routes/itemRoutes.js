@@ -7,7 +7,6 @@ import {
   getItemById,
   updateItem,
 } from "../controllers/itemController.js";
-import { apiRateLimiter } from "../middlewares/rateLimit.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
 class ItemRoutes {
@@ -17,33 +16,16 @@ class ItemRoutes {
   }
 
   initializeRoutes() {
-    this.router.post(
-      "/create",
-      apiRateLimiter,
-      authMiddleware.authenticateToken,
-      createItem,
-    );
-    this.router.get(
-      "/list",
-      apiRateLimiter,
-      authMiddleware.authenticateToken,
-      getAllItems,
-    );
-    this.router.get(
-      "/get/:id",
-      apiRateLimiter,
-      authMiddleware.authenticateToken,
-      getItemById,
-    );
+    this.router.post("/create", authMiddleware.authenticateToken, createItem);
+    this.router.get("/list", authMiddleware.authenticateToken, getAllItems);
+    this.router.get("/get/:id", authMiddleware.authenticateToken, getItemById);
     this.router.put(
       "/update/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       updateItem,
     );
     this.router.delete(
       "/delete/:id",
-      apiRateLimiter,
       authMiddleware.authenticateToken,
       deleteItem,
     );

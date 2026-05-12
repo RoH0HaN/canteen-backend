@@ -4,9 +4,11 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ConsumptionService } from "../services/consumptionService.js";
 import { ItemService } from "../services/itemService.js";
 import {
+  approveConsumptionSchema,
   createConsumptionSchema,
   updateConsumptionSchema,
 } from "../utils/validators.js";
+import { Enums } from "../utils/enums.js";
 
 /**
  * @desc    Create a new consumption event (deduct stock)
@@ -44,10 +46,14 @@ export const createConsumption = asyncHandler(async (req, res, next) => {
 
   const { purpose, notes, items } = value;
 
+  const referenceNumber =
+    await ConsumptionService.generateConsumptionReferenceNumber();
+
   const consumption = await ConsumptionService.insertConsumption({
     purpose,
     notes,
     placed_by: req.user.id,
+    reference_number: referenceNumber,
   });
 
   if (!consumption)
@@ -68,10 +74,90 @@ export const createConsumption = asyncHandler(async (req, res, next) => {
       item_id: item.item_id,
       quantity: item.quantity,
     });
+  }
+
+  await ConsumptionService.insertConsumptionStatusLog({
+    consumption_id: consumption.id,
+    old_status: null,
+    new_status: "pending_approval",
+    changed_by: req.user.id,
+    remarks: "Consumption created",
+  });
+
+  res
+    .status(201)
+    .json(new AppSuccess("Consumption created successfully", consumption));
+});
+
+/**
+ * @desc    Approve a consumption event (add stock)
+ * @route   POST /api/v1/consumptions/approve/:id
+ * @access  Private (Canteen Incharge only)
+ * @returns {AppSuccess} No data
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Consumption approved successfully",
+ *   "data": null
+ * }
+ */
+export const approveConsumption = asyncHandler(async (req, res, next) => {
+  const consumptionId = parseInt(req.params.id, 10);
+  if (isNaN(consumptionId))
+    return next(new AppError("Invalid consumption ID", 400));
+
+  const { error, value } = approveConsumptionSchema.validate(req.body);
+  if (error) return next(new AppError(error.details[0].message, 400));
+
+  const { items } = value;
+
+  const consumption =
+    await ConsumptionService.getConsumptionById(consumptionId);
+  if (!consumption) return next(new AppError("Consumption not found", 404));
+  if (consumption.status !== "pending_approval") {
+    return next(
+      new AppError(
+        "Only consumptions in 'Pending Approval' status can be approved",
+        400,
+      ),
+    );
+  }
+
+  for (const item of items) {
+    const consumptionItem = consumption.items.find((ri) => ri.id === item.id);
+    if (!consumptionItem)
+      return next(
+        new AppError(`Consumption item ID ${item.id} not found`, 404),
+      );
+
+    if (item.approved_quantity > consumptionItem.item.current_stock) {
+      return next(
+        new AppError(
+          "Approved quantity cannot be greater than current stock",
+          400,
+        ),
+      );
+    }
+  }
+
+  for (const item of items) {
+    if (item.approved_quantity <= 0) {
+      return next(
+        new AppError(
+          `Approved quantity for item ID ${item.id} must be > 0`,
+          400,
+        ),
+      );
+    }
+    await ConsumptionService.updateConsumptionItem(item.id, {
+      approved_quantity: item.approved_quantity,
+      approval_remarks: item.approval_remarks,
+    });
 
     const success = await ItemService.decrementStock(
       item.item_id,
-      item.quantity,
+      item.approved_quantity,
     );
     if (!success) {
       return next(
@@ -80,9 +166,21 @@ export const createConsumption = asyncHandler(async (req, res, next) => {
     }
   }
 
+  await ConsumptionService.updateConsumption(consumptionId, {
+    status: "approved",
+  });
+
+  await ConsumptionService.insertConsumptionStatusLog({
+    consumption_id: consumptionId,
+    old_status: "pending_approval",
+    new_status: "approved",
+    changed_by: req.user.id,
+    remarks: "Consumption approved",
+  });
+
   res
-    .status(201)
-    .json(new AppSuccess("Consumption created successfully", consumption));
+    .status(200)
+    .json(new AppSuccess("Consumption approved successfully", null, 200));
 });
 
 /**
@@ -250,7 +348,7 @@ export const getConsumptionById = asyncHandler(async (req, res, next) => {
  *   "message": "Consumptions retrieved successfully",
  *   "data": {
  *     "data": [
- *       { "id": 12, "purpose": "Daily Lunch", "placed_by_user": { "id": 3, "name": "Rohan" }, ... }
+ *       { "id": 12, "purpose": "Daily Lunch",, "status": "approved", "reference_number": "CON-1234567890123-456", "placed_by_user": { "id": 3, "name": "Rohan" }, ... }
  *     ],
  *     "pagination": { "page": 1, "limit": 10, "totalItems": 42, "totalPages": 5, "hasNextPage": true, "hasPrevPage": false }
  *   }
@@ -269,4 +367,42 @@ export const getAllConsumptions = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .json(new AppSuccess("Consumptions retrieved successfully", result));
+});
+
+/**
+ * @desc    Get all consumptions of a specific status with pagination & search
+ * @route   GET /api/v1/consumptions/get-by-status?status=approved&page=1&limit=10&search=lunch
+ * @access  Private
+ * @returns {AppSuccess} Paginated list (without item details)
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Consumptions retrieved successfully",
+ *   "data": {
+ *     "data": [
+ *       { "id": 12, "purpose": "Daily Lunch", "status": "approved", "reference_number": "CON-1234567890123-456", "placed_by_user": { "id": 3, "name": "Rohan" }, ... }
+ *     ],
+ *     "pagination": { "page": 1, "limit": 10, "totalItems": 42, "totalPages": 5, "hasNextPage": true, "hasPrevPage": false }
+ *   }
+ * }
+ */
+export const getConsumptionsByStatus = asyncHandler(async (req, res, next) => {
+  const status = req.query.status;
+  if (!status || !Enums.consumptionStatus.includes(status))
+    return next(new AppError("Invalid status", 400));
+
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10;
+  const search = req.query.search || "";
+
+  const result = await ConsumptionService.getConsumptionsByStatus(status, {
+    page,
+    limit,
+    search,
+  });
+
+  res
+    .status(200)
+    .json(new AppSuccess("Consumptions retrieved successfully", result, 200));
 });
