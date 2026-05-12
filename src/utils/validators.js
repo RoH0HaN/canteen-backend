@@ -85,7 +85,7 @@ export const approveRequisitionSchema = Joi.object({
       Joi.object({
         id: Joi.number().required(),
         approved_quantity: Joi.number().required(),
-        approval_remarks: Joi.string().optional(),
+        approval_remarks: Joi.string().allow("").optional(),
       }),
     )
     .required(),
