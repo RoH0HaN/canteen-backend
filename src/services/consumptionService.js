@@ -16,6 +16,8 @@ export class ConsumptionService {
         consumption_items (
           id,
           quantity,
+          approved_quantity,
+          approval_remarks,
           item:items (id, name, unit, current_stock)
         ),
         placed_by_user:users!placed_by (id, name, user_id, designation, role, signature_url)
@@ -29,17 +31,21 @@ export class ConsumptionService {
 
     // Transform to clean structure
     const result = {
+      reference_number: data.reference_number,
       id: data.id,
       purpose: data.purpose,
       notes: data.notes,
       created_at: data.created_at,
       updated_at: data.updated_at,
       placed_by: data.placed_by_user,
+      status: data.status,
       items:
         data.consumption_items?.map((ci) => ({
           id: ci.id,
           quantity: ci.quantity,
           item: ci.item,
+          approved_quantity: ci.approved_quantity,
+          approval_remarks: ci.approval_remarks,
         })) || [],
     };
 
@@ -115,6 +121,8 @@ export class ConsumptionService {
       .select(
         `
         id,
+        reference_number,
+        status,
         purpose,
         notes,
         created_at,
@@ -178,6 +186,8 @@ export class ConsumptionService {
       .select(
         `
         id,
+        reference_number,
+        status,
         purpose,
         notes,
         created_at,

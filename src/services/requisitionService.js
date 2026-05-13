@@ -48,6 +48,7 @@ export class RequisitionService {
       reference_number: data.reference_number,
       status: data.status,
       notes: data.notes,
+      show_pdf: data.show_pdf,
       bill_file_url: data.bill_file_url,
       placed_at: data.placed_at,
       created_at: data.created_at,
@@ -93,6 +94,7 @@ export class RequisitionService {
         notes,
         bill_file_url,
         created_at,
+        show_pdf,
         placed_by_user:users!placed_by (id, name, role, user_id),
         vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, phone_number)
       `,
@@ -118,6 +120,7 @@ export class RequisitionService {
         bill_file_url: item.bill_file_url,
         created_at: item.created_at,
         placed_by: item.placed_by_user,
+        show_pdf: item.show_pdf,
         vendor: item.vendor,
         // items are omitted for list view (fetch single if needed)
       })),
@@ -246,6 +249,7 @@ export class RequisitionService {
         notes,
         bill_file_url,
         created_at,
+        show_pdf,
         placed_by_user:users!placed_by (id, name, role, user_id),
         vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, phone_number)
       `,
@@ -272,6 +276,7 @@ export class RequisitionService {
         bill_file_url: item.bill_file_url,
         created_at: item.created_at,
         placed_by: item.placed_by_user,
+        show_pdf: item.show_pdf,
         vendor: item.vendor,
         // items are omitted for list view (fetch single if needed)
       })),
