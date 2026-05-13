@@ -166,6 +166,7 @@ export class RequisitionService {
         notes,
         bill_file_url,
         created_at,
+        show_pdf,
         placed_by_user:users!placed_by (id, name, role, user_id),
         vendor:vendors!vendor_id (id, name, address, pan_number, type_of_organization, regd_office, phone_number)
       `,
