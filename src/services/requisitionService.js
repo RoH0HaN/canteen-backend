@@ -197,6 +197,7 @@ export class RequisitionService {
         bill_file_url: item.bill_file_url,
         created_at: item.created_at,
         placed_by: item.placed_by_user,
+        show_pdf: item.show_pdf,
         vendor: item.vendor,
         // items are omitted for list view (fetch single if needed)
       })),
