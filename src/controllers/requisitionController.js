@@ -390,7 +390,7 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * @desc    Update a requisition (Admin Only)
+ * @desc    Update a requisition (Admin & Data Entry Only)
  * @route   PUT /api/v1/requisitions/update/:id
  * @access  Private (Admin only)
  * @param   {number} id - Requisition ID in URL
@@ -416,6 +416,24 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
   const existing = await RequisitionService.getRequisitionById(requisitionId);
   if (!existing) return next(new AppError("Requisition not found", 404));
 
+  if (existing.status === "received") {
+    return next(
+      new AppError(
+        "Only requisitions in 'Pending Approval' or 'Approved' status can be updated",
+        400,
+      ),
+    );
+  }
+
+  if (req.user.role !== "data_entry" && existing.status === "draft") {
+    return next(
+      new AppError(
+        "Only data entry users can update requisitions in 'Draft' status",
+        400,
+      ),
+    );
+  }
+
   await RequisitionService.updateRequisition(requisitionId, requisitionData);
 
   if (items && items.length) {
@@ -435,31 +453,12 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
         );
       }
 
-      // Decrement existing stock
-      const success = await ItemService.decrementStock(
-        existingItem.item.id,
-        existingItem.received_quantity,
-      );
-
-      if (!success) {
-        return next(
-          new AppError(
-            `Insufficient stock for item ${existingItem.item_id}`,
-            400,
-          ),
-        );
-      }
       await RequisitionService.updateRequisitionItem(item.id, {
         required_quantity: item.required_quantity,
         approved_quantity: item.approved_quantity,
         approval_remarks: item.approval_remarks,
         received_quantity: item.received_quantity,
       });
-      // Increment new stock
-      await ItemService.incrementStock(
-        existingItem.item.id,
-        item.received_quantity,
-      );
     }
   }
 
