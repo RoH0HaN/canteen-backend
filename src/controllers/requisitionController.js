@@ -113,7 +113,7 @@ export const submitFinalRequisition = asyncHandler(async (req, res, next) => {
   if (!requisition.show_pdf)
     return next(new AppError("PDF preview (submission) not viewd", 400));
 
-  await RequisitionService.updateRequisitionStatus(requisitionId, {
+  await RequisitionService.updateRequisition(requisitionId, {
     status: "pending_approval",
     show_pdf: false,
   });
