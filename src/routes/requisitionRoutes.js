@@ -14,6 +14,7 @@ import {
   updateRequisitionBill,
   showPdf,
   submitFinalRequisition,
+  getRequisitionLogs,
 } from "../controllers/requisitionController.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
@@ -86,6 +87,11 @@ class RequisitionRoutes {
       "/submit-final-requisition/:id",
       authMiddleware.authenticateToken,
       submitFinalRequisition,
+    );
+    this.router.get(
+      "/logs/:id",
+      authMiddleware.authenticateToken,
+      getRequisitionLogs,
     );
   }
 }

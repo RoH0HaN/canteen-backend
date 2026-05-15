@@ -207,3 +207,7 @@ export const getAllItems = asyncHandler(async (req, res, next) => {
     .status(200)
     .json(new AppSuccess("Items fetched successfully", result, 200));
 });
+
+export const getDailyItemStockSummery = asyncHandler(
+  async (req, res, next) => {},
+);

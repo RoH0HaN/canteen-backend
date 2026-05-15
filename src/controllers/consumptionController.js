@@ -9,6 +9,7 @@ import {
   updateConsumptionSchema,
 } from "../utils/validators.js";
 import { Enums } from "../utils/enums.js";
+import { StockMovementService } from "../services/stockMovementsService.js";
 
 /**
  * @desc    Create a new consumption event (deduct stock)
@@ -164,6 +165,14 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
         new AppError(`Insufficient stock for item ${item.item_id}`, 400),
       );
     }
+
+    await StockMovementService.insertStockMovement({
+      item_id: item.item_id,
+      quantity: item.approved_quantity,
+      movement_type: "issue",
+      movement_date: new Date(),
+      reference_number: consumption.reference_number,
+    });
   }
 
   await ConsumptionService.updateConsumption(consumptionId, {

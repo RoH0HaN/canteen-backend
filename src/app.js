@@ -6,7 +6,6 @@ import fs from "fs-extra";
 import path from "path";
 import { corsMiddleware } from "./middlewares/cors.js";
 import { devLogger, prodLogger } from "./middlewares/logger.js";
-import { generalRateLimiter } from "./middlewares/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import cookieParser from "cookie-parser";
 
@@ -36,7 +35,6 @@ export class App {
     this.app.use(express.static(path.join(process.cwd(), "uploads")));
     this.app.use(express.json({ limit: "10mb" }));
     this.app.use(express.urlencoded({ extended: true }));
-    this.app.use(generalRateLimiter);
     this.app.use(cookieParser());
 
     // COOKIE SESSION (for OAuth session)

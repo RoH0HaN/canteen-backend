@@ -13,6 +13,7 @@ import { deleteFile, uploadFile } from "../services/storageService.js";
 import { v4 as uuidv4 } from "uuid";
 import { Enums } from "../utils/enums.js";
 import { ItemService } from "../services/itemService.js";
+import { StockMovementService } from "../services/stockMovementsService.js";
 
 /**
  * @desc    Create a new requisition
@@ -237,9 +238,6 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
     );
   }
 
-  if (!requisition.show_pdf)
-    return next(new AppError("PDF preview (approval) not viewd", 400));
-
   for (const item of items) {
     const requisitionItem = requisition.items.find((ri) => ri.id === item.id);
     if (!requisitionItem)
@@ -349,6 +347,14 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
       requisitionItem.item.id,
       item.received_quantity,
     );
+
+    await StockMovementService.insertStockMovement({
+      item_id: requisitionItem.item.id,
+      quantity: item.received_quantity,
+      movement_type: "receipt",
+      movement_date: new Date(),
+      reference_number: requisition.reference_number,
+    });
   }
 
   const requisitionData = {
@@ -784,4 +790,50 @@ export const showPdf = asyncHandler(async (req, res, next) => {
   await RequisitionService.toggleShowPdf(requisitionId, true);
 
   res.status(200).json(new AppSuccess("PDF viewed successfully", null, 200));
+});
+
+/**
+ * @desc    Get a requisition's logs
+ * @route   GET /api/v1/requisitions/logs/:id
+ * @access  Private (Manager only)
+ * @param   {number} id - Requisition ID in URL
+ * @returns {AppSuccess} No data, only message
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Requisition logs retrieved successfully",
+ *   "data": [
+ *     {
+ *       "id": 1,
+ *       "requisition_id": 1,
+ *       "old_status": "draft",
+ *       "new_status": "pending_approval",
+ *       "changed_at": "2021-01-01T00:00:00.000Z",
+ *       "changed_by": 1,
+ *       "changed_by_user": {
+ *         "id": 1,
+ *         "name": "John",
+ *         "email": "t8k2o@example.com",
+ *         "role": "manager",
+ *         "user_id": "john123"
+ *       },
+ *       "remarks": "Requisition created"
+ *     }
+ *   ]
+ * }
+ */
+export const getRequisitionLogs = asyncHandler(async (req, res, next) => {
+  const requisitionId = parseInt(req.params.id, 10);
+  if (isNaN(requisitionId))
+    return next(new AppError("Invalid requisition ID", 400));
+
+  const logs =
+    await RequisitionService.getRequisitionStatusLogByRequisitionId(
+      requisitionId,
+    );
+
+  res
+    .status(200)
+    .json(new AppSuccess("Requisition logs retrieved successfully", logs, 200));
 });

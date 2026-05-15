@@ -393,6 +393,20 @@ export class RequisitionService {
     return data;
   }
 
+  static async getRequisitionStatusLogByRequisitionId(requisitionId) {
+    const { data, error } = await supabase
+      .from("requisition_status_log")
+      .select(
+        `
+        *,
+        changed_by_user:users!changed_by (id, name, role, user_id, signature_url, designation)
+      `,
+      )
+      .eq("requisition_id", requisitionId);
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
   // ---------- Generate Reference Number ----------
   static async generateRequisitionReferenceNumber() {
     // Get current date in DDMMYYYY format (local time, consistent with server)
