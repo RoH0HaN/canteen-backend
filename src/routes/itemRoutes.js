@@ -6,6 +6,8 @@ import {
   getAllItems,
   getItemById,
   updateItem,
+  getDailyItemStockSummery,
+  getItemStockSummery,
 } from "../controllers/itemController.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
@@ -28,6 +30,16 @@ class ItemRoutes {
       "/delete/:id",
       authMiddleware.authenticateToken,
       deleteItem,
+    );
+    this.router.get(
+      "/daily-stock-summery",
+      authMiddleware.authenticateToken,
+      getDailyItemStockSummery,
+    );
+    this.router.get(
+      "/stock-summery",
+      authMiddleware.authenticateToken,
+      getItemStockSummery,
     );
   }
 }

@@ -4,6 +4,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ItemService } from "../services/itemService.js";
 import { createItemSchema, updateItemSchema } from "../utils/validators.js";
 import { deleteFile, uploadFile } from "../services/storageService.js";
+import { StockMovementService } from "../services/stockMovementsService.js";
 
 /**
  * @desc    Create a new inventory item
@@ -208,6 +209,67 @@ export const getAllItems = asyncHandler(async (req, res, next) => {
     .json(new AppSuccess("Items fetched successfully", result, 200));
 });
 
-export const getDailyItemStockSummery = asyncHandler(
-  async (req, res, next) => {},
-);
+/**
+ * @desc    Get daily item stock summery
+ * @route   GET /api/v1/items/daily-stock-summery
+ * @access  Private (Admin/Staff)
+ * @param   {string} date - Date in YYYY-MM-DD format
+ * @returns {AppSuccess} Item stock summery for the day
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Item stock summery fetched successfully",
+ *   "data": [
+ *     { "item_id": 12, "item_name": "Basmati Rice", "opening_stock": 45, ... },
+ *     { "item_id": 15, "item_name": "Chicken", "opening_stock": 20, ... }
+ *   ]
+ * }
+ */
+export const getDailyItemStockSummery = asyncHandler(async (req, res, next) => {
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const result = await StockMovementService.getDailyStockSummary(date);
+  res
+    .status(200)
+    .json(
+      new AppSuccess("Item stock summery fetched successfully", result, 200),
+    );
+});
+
+/**
+ * @desc    Get item daily stock summery
+ * @route   GET /api/v1/items/daily-stock-summery
+ * @access  Private (Admin/Staff)
+ * @param   {number} itemId - Item ID
+ * @param   {string} startDate - Start date in YYYY-MM-DD format
+ * @param   {string} endDate - End date in YYYY-MM-DD format
+ * @returns {AppSuccess} Item stock summery for the day
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Item stock summery fetched successfully",
+ *   "data": [
+ *     { "report_date": "2023-01-01", "item_id": 12, "opening_stock": 45, "received": 45, ... },
+ *     { "report_date": "2023-01-01", "item_id": 15, "opening_stock": 20, "received": 20, ... }
+ *   ]
+ * }
+ */
+export const getItemStockSummery = asyncHandler(async (req, res, next) => {
+  const { itemId, startDate, endDate } = req.query;
+
+  if (!itemId || !startDate || !endDate)
+    return next(new AppError("Missing required parameters", 400));
+
+  const result = await StockMovementService.getItemDailyStockRange(
+    itemId,
+    startDate,
+    endDate,
+  );
+
+  res
+    .status(200)
+    .json(
+      new AppSuccess("Item stock summery fetched successfully", result, 200),
+    );
+});
