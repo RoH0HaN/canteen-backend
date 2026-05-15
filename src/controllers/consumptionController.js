@@ -140,9 +140,7 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
         ),
       );
     }
-  }
 
-  for (const item of items) {
     if (item.approved_quantity <= 0) {
       return next(
         new AppError(
@@ -157,17 +155,20 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
     });
 
     const success = await ItemService.decrementStock(
-      item.item_id,
+      consumptionItem.item.id,
       item.approved_quantity,
     );
     if (!success) {
       return next(
-        new AppError(`Insufficient stock for item ${item.item_id}`, 400),
+        new AppError(
+          `Insufficient stock for item ${consumptionItem.item.id}`,
+          400,
+        ),
       );
     }
 
     await StockMovementService.insertStockMovement({
-      item_id: item.item_id,
+      item_id: consumptionItem.item.id,
       quantity: item.approved_quantity,
       movement_type: "issue",
       movement_date: new Date(),
