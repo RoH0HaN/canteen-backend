@@ -267,9 +267,17 @@ export const getItemStockSummery = asyncHandler(async (req, res, next) => {
     endDate,
   );
 
+  const item = await ItemService.getItemById(itemId);
+  if (!item) {
+    return next(new AppError("Item not found", 404));
+  }
+
+  const data = {
+    item: item,
+    data: result,
+  };
+
   res
     .status(200)
-    .json(
-      new AppSuccess("Item stock summery fetched successfully", result, 200),
-    );
+    .json(new AppSuccess("Item stock summery fetched successfully", data, 200));
 });
