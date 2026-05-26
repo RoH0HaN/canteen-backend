@@ -113,6 +113,17 @@ export const updateVendor = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid vendor ID", 400));
   }
 
+  // Parse body if string
+  if (req.body && typeof req.body === "string") {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (err) {
+      return next(
+        new AppError("Invalid format. Must be a valid JSON array", 400),
+      );
+    }
+  }
+
   const { error, value } = updateVendorSchema.validate(req.body);
   if (error) {
     return next(
