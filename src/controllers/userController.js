@@ -40,6 +40,17 @@ import { v4 as uuidv4 } from "uuid";
  * }
  */
 export const createUser = asyncHandler(async (req, res, next) => {
+  // Parse body if string
+  if (req.body && typeof req.body === "string") {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (err) {
+      return next(
+        new AppError("Invalid format. Must be a valid JSON array", 400),
+      );
+    }
+  }
+
   // Validate request body FIRST
   const { error, value } = createUserSchema.validate(req.body);
   if (error) {
