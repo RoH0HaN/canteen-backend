@@ -27,6 +27,17 @@ import { v4 as uuidv4 } from "uuid";
  * }
  */
 export const createVendor = asyncHandler(async (req, res, next) => {
+  // Parse body if string
+  if (req.body && typeof req.body === "string") {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (err) {
+      return next(
+        new AppError("Invalid format. Must be a valid JSON array", 400),
+      );
+    }
+  }
+
   const { error, value } = createVendorSchema.validate(req.body);
   if (error) {
     return next(
