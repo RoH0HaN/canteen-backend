@@ -230,6 +230,14 @@ export const updateConsumption = asyncHandler(async (req, res, next) => {
   const existing = await ConsumptionService.getConsumptionById(consumptionId);
   if (!existing) return next(new AppError("Consumption not found", 404));
 
+  if (existing.status !== "pending_approval")
+    return next(
+      new AppError(
+        "Only consumptions in 'Pending Approval' status can be updated",
+        400,
+      ),
+    );
+
   await ConsumptionService.updateConsumption(consumptionId, updatedData);
 
   if (items && items.length) {
