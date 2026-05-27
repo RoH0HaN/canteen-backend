@@ -747,6 +747,14 @@ export const updateRequisitionBill = asyncHandler(async (req, res, next) => {
     await RequisitionService.getRequisitionById(requisitionId);
   if (!requisition) return next(new AppError("Requisition not found", 404));
 
+  if (requisition.status !== "received")
+    return next(
+      new AppError(
+        "Requisition is not in 'Received' status, cannot update bill",
+        400,
+      ),
+    );
+
   if (requisition.bill_file_url && requisition.bill_file_url !== "N/A") {
     await deleteFile(requisition.bill_file_url);
   }
