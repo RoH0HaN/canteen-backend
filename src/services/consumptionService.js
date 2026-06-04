@@ -18,7 +18,7 @@ export class ConsumptionService {
           quantity,
           approved_quantity,
           approval_remarks,
-          item:items (id, name, unit, current_stock)
+          item:items (id, name, unit)
         ),
         placed_by_user:users!placed_by (id, name, user_id, designation, role, signature_url)
       `,
@@ -28,6 +28,25 @@ export class ConsumptionService {
 
     if (error) throw new Error(error.message);
     if (!data) return null;
+
+    if (data.consumption_items?.length > 0) {
+      const itemIds = data.consumption_items.map((ri) => ri.item.id);
+      const { data: stockSummaries, error: stockError } = await supabase.rpc(
+        "get_current_stock_bulk",
+        { item_ids: itemIds },
+      );
+      if (stockError) throw new Error(stockError.message);
+
+      const stockMap = new Map(stockSummaries.map((s) => [s.item_id, s]));
+      for (const conItem of data.consumption_items) {
+        const summary = stockMap.get(conItem.item.id);
+        if (summary) {
+          conItem.item.current_stock = summary.current_stock;
+          conItem.item.average_rate = summary.average_rate;
+          conItem.item.stock_value = summary.stock_value;
+        }
+      }
+    }
 
     // Transform to clean structure
     const result = {
@@ -271,6 +290,24 @@ export class ConsumptionService {
     if (error) throw new Error(error.message);
     if (data) cacheHelper.set(cacheKey, data);
     return data;
+  }
+
+  static async deleteConsumptionItem(itemId) {
+    // Get consumption_event_id to invalidate later
+    const { data: existing } = await supabase
+      .from("consumption_items")
+      .select("consumption_event_id")
+      .eq("id", itemId)
+      .single();
+    const { error } = await supabase
+      .from("consumption_items")
+      .delete()
+      .eq("id", itemId);
+    if (error) throw new Error(error.message);
+    if (existing?.consumption_event_id) {
+      cacheHelper.del(`consumption:${existing.consumption_event_id}`);
+    }
+    cacheHelper.delPattern("consumptions:");
   }
 
   // ---------- Generate Reference Number ----------

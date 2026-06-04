@@ -22,7 +22,6 @@ import { StockMovementService } from "../services/stockMovementsService.js";
  *     "unit": "kg",
  *     "min_stock_level": 10,
  *     "opening_stock": 50,
- *     "current_stock": 50
  *   }
  * }
  */
@@ -46,8 +45,7 @@ export const createItem = asyncHandler(async (req, res, next) => {
     unit,
     min_stock_level,
     opening_stock,
-    current_stock: opening_stock,
-  });
+  }); // current stock will be fetched database separately
 
   res.status(201).json(new AppSuccess("Item created successfully", item, 201));
 });
@@ -70,6 +68,8 @@ export const createItem = asyncHandler(async (req, res, next) => {
  *     "min_stock_level": 10,
  *     "opening_stock": 50,
  *     "current_stock": 45
+ *     "average_rate": 45
+ *     "stock_value": 2025
  *   }
  * }
  */
@@ -227,8 +227,16 @@ export const getAllItems = asyncHandler(async (req, res, next) => {
  * }
  */
 export const getDailyItemStockSummery = asyncHandler(async (req, res, next) => {
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
-  const result = await StockMovementService.getDailyStockSummary(date);
+  const { startDate, endDate } = req.query; // fields changed from "date" to "startDate" and "endDate" for better clarity and flexibility
+
+  if (!startDate || !endDate)
+    return next(new AppError("Missing required parameters", 400));
+
+  const result = await StockMovementService.getStockSummeryRange(
+    startDate,
+    endDate,
+  );
+
   res
     .status(200)
     .json(
@@ -261,7 +269,7 @@ export const getItemStockSummery = asyncHandler(async (req, res, next) => {
   if (!itemId || !startDate || !endDate)
     return next(new AppError("Missing required parameters", 400));
 
-  const result = await StockMovementService.getItemDailyStockRange(
+  const result = await StockMovementService.getItemStockSummeryRange(
     itemId,
     startDate,
     endDate,
