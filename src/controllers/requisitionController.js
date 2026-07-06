@@ -180,7 +180,7 @@ export const submitFinalRequisition = asyncHandler(async (req, res, next) => {
  *         "approved_quantity": 0,
  *         "approval_remarks": null,
  *         "received_quantity": 0,
- *         "item": { "id": 1, "name": "Basmati Rice", "unit": "KG", "current_stock": 0 }
+ *         "item": { "id": 1, "name": "Basmati Rice", "unit": "KG", "current_stock": 0, "average_rate": 0, "stock_value": 0 }
  *       }
  *     ]
  *   }
@@ -341,12 +341,14 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
     }
     await RequisitionService.updateRequisitionItem(item.id, {
       received_quantity: item.received_quantity,
+      rate: item.rate, // Store the rate at which the item was received for accurate stock valuation and future average rate calculations
     });
 
-    await ItemService.incrementStock(
-      requisitionItem.item.id,
-      item.received_quantity,
-    );
+    // ** Below code is commented as we are maintaining stock movements in a separate table and not updating current stock in items table directly. Stock summary will be calculated based on stock movements. **
+    // await ItemService.incrementStock(
+    //   requisitionItem.item.id,
+    //   item.received_quantity,
+    // );
 
     await StockMovementService.insertStockMovement({
       item_id: requisitionItem.item.id,
@@ -354,6 +356,7 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
       movement_type: "receipt",
       movement_date: new Date(),
       reference_number: requisition.reference_number,
+      rate: item.rate, // Store the rate at which the item was received for accurate stock valuation and future average rate calculations
     });
   }
 
@@ -417,7 +420,7 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
   const { error, value } = updateRequisitionSchema.validate(req.body);
   if (error) return next(new AppError(error.details[0].message, 400));
 
-  const { items, ...requisitionData } = value;
+  const { items, new_items, ...requisitionData } = value;
 
   const existing = await RequisitionService.getRequisitionById(requisitionId);
   if (!existing) return next(new AppError("Requisition not found", 404));
@@ -464,6 +467,18 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
         approved_quantity: item.approved_quantity,
         approval_remarks: item.approval_remarks,
         received_quantity: item.received_quantity,
+      });
+    }
+  }
+
+  // Handle new items addition
+  if (new_items && new_items.length) {
+    for (const item of new_items) {
+      await RequisitionService.insertRequisitionItems({
+        requisition_id: requisitionId,
+        item_id: item.item_id,
+        required_quantity: item.required_quantity,
+        approved_quantity: item.approved_quantity,
       });
     }
   }

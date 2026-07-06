@@ -98,6 +98,7 @@ export const receiveRequisitionSchema = Joi.object({
       Joi.object({
         id: Joi.number().required(),
         received_quantity: Joi.number().required(),
+        rate: Joi.number().required(),
       }),
     )
     .required(),
@@ -118,6 +119,16 @@ export const updateRequisitionSchema = Joi.object({
       }),
     )
     .required(),
+  new_items: Joi.array()
+    .items(
+      Joi.object({
+        item_id: Joi.number().required(),
+        required_quantity: Joi.number().required(),
+        approved_quantity: Joi.number().required(),
+      }),
+    )
+    .optional()
+    .default([]), // If not provided, default to empty array
 });
 
 // Consumption

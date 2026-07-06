@@ -18,19 +18,21 @@ export class StockMovementService {
     if (error) throw new Error(error.message);
   }
 
-  static async getDailyStockSummary(date) {
-    date = this.formatDateForRPC(date);
-    const { data, error } = await supabase.rpc("get_daily_stock_summary", {
-      target_date: date, // ISO string 'YYYY-MM-DD'
+  static async getStockSummeryRange(startDate, endDate) {
+    startDate = this.formatDateForRPC(startDate);
+    endDate = this.formatDateForRPC(endDate);
+    const { data, error } = await supabase.rpc("get_stock_summary_range", {
+      start_date: startDate,
+      end_date: endDate,
     });
     if (error) throw new Error(error.message);
     return data;
   }
 
-  static async getItemDailyStockRange(itemId, startDate, endDate) {
+  static async getItemStockSummeryRange(itemId, startDate, endDate) {
     startDate = this.formatDateForRPC(startDate);
     endDate = this.formatDateForRPC(endDate);
-    const { data, error } = await supabase.rpc("get_item_daily_stock_range", {
+    const { data, error } = await supabase.rpc("get_item_stock_summary_range", {
       p_item_id: itemId,
       start_date: startDate,
       end_date: endDate,

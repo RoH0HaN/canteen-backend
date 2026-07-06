@@ -33,7 +33,7 @@ export class RequisitionService {
           approved_quantity,
           approval_remarks,
           received_quantity,
-          item:items (id, name, unit, current_stock)
+          item:items (id, name, unit)
         )
       `,
       )
@@ -42,6 +42,25 @@ export class RequisitionService {
 
     if (error) throw new Error(error.message);
     if (!data) return null;
+
+    if (data.requisition_items?.length > 0) {
+      const itemIds = data.requisition_items.map((ri) => ri.item.id);
+      const { data: stockSummaries, error: stockError } = await supabase.rpc(
+        "get_current_stock_bulk",
+        { item_ids: itemIds },
+      );
+      if (stockError) throw new Error(stockError.message);
+
+      const stockMap = new Map(stockSummaries.map((s) => [s.item_id, s]));
+      for (const reqItem of data.requisition_items) {
+        const summary = stockMap.get(reqItem.item.id);
+        if (summary) {
+          reqItem.item.current_stock = summary.current_stock;
+          reqItem.item.average_rate = summary.average_rate;
+          reqItem.item.stock_value = summary.stock_value;
+        }
+      }
+    }
 
     const result = {
       id: data.id,
@@ -61,7 +80,7 @@ export class RequisitionService {
           approved_quantity: ri.approved_quantity,
           approval_remarks: ri.approval_remarks,
           received_quantity: ri.received_quantity,
-          item: ri.item,
+          item: ri.item, // current stock average rate and valuation required
         })) || [],
     };
     cacheHelper.set(cacheKey, result);

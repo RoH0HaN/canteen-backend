@@ -28,6 +28,16 @@ export class ItemService {
       .eq("id", id)
       .maybeSingle();
     if (error) throw new Error(error.message);
+
+    if (!data) return null; // Return null if no item found
+
+    const stockSummary = await this.getItemCurrentStockSummery(data.id);
+    if (stockSummary) {
+      data.current_stock = stockSummary.current_stock;
+      data.average_rate = stockSummary.average_rate;
+      data.stock_value = stockSummary.stock_value;
+    }
+
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
@@ -44,6 +54,16 @@ export class ItemService {
       .eq("name", name)
       .maybeSingle();
     if (error) throw new Error(error.message);
+
+    if (!data) return null; // Return null if no item found
+
+    const stockSummary = await this.getItemCurrentStockSummery(data.id);
+    if (stockSummary) {
+      data.current_stock = stockSummary.current_stock;
+      data.average_rate = stockSummary.average_rate;
+      data.stock_value = stockSummary.stock_value;
+    }
+
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
@@ -97,7 +117,7 @@ export class ItemService {
     const { count, error: countError } = await countQuery;
     if (countError) throw new Error(countError.message);
 
-    // Fetch data
+    // Fetch paginated data
     let dataQuery = supabase
       .from("items")
       .select("*")
@@ -108,6 +128,26 @@ export class ItemService {
     }
     const { data, error } = await dataQuery;
     if (error) throw new Error(error.message);
+
+    // Bulk fetch stock summaries
+    if (data.length > 0) {
+      const itemIds = data.map((item) => item.id);
+      const { data: stockSummaries, error: stockError } = await supabase.rpc(
+        "get_current_stock_bulk",
+        { item_ids: itemIds },
+      );
+      if (stockError) throw new Error(stockError.message);
+
+      const stockMap = new Map(stockSummaries.map((s) => [s.item_id, s]));
+      for (const item of data) {
+        const summary = stockMap.get(item.id);
+        if (summary) {
+          item.current_stock = summary.current_stock;
+          item.average_rate = summary.average_rate;
+          item.stock_value = summary.stock_value;
+        }
+      }
+    }
 
     const totalPages = Math.ceil(count / limit);
     const result = {
@@ -149,6 +189,15 @@ export class ItemService {
     // Invalidate caches for this item
     cacheHelper.del(`item:id:${itemId}`);
     cacheHelper.delPattern("items:");
+  }
+
+  static async getItemCurrentStockSummery(itemId) {
+    const { data, error } = await supabase.rpc("get_current_stock", {
+      item_id: itemId,
+    });
+    if (error) throw new Error(error.message);
+
+    return data;
   }
 
   // ----- Helper: Invalidate all item caches -----

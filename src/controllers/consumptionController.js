@@ -154,18 +154,19 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
       approval_remarks: item.approval_remarks,
     });
 
-    const success = await ItemService.decrementStock(
-      consumptionItem.item.id,
-      item.approved_quantity,
-    );
-    if (!success) {
-      return next(
-        new AppError(
-          `Insufficient stock for item ${consumptionItem.item.id}`,
-          400,
-        ),
-      );
-    }
+    // ** Below code is commented as we are maintaining stock movements in a separate table and not updating current stock in items table directly. Stock summary will be calculated based on stock movements. **
+    // const success = await ItemService.decrementStock(
+    //   consumptionItem.item.id,
+    //   item.approved_quantity,
+    // );
+    // if (!success) {
+    //   return next(
+    //     new AppError(
+    //       `Insufficient stock for item ${consumptionItem.item.id}`,
+    //       400,
+    //     ),
+    //   );
+    // }
 
     await StockMovementService.insertStockMovement({
       item_id: consumptionItem.item.id,
@@ -173,6 +174,7 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
       movement_type: "issue",
       movement_date: new Date(),
       reference_number: consumption.reference_number,
+      rate: consumptionItem.item.average_rate, // Use average rate for stock valuation. This can be enhanced to use FIFO/LIFO rates if needed.
     });
   }
 
@@ -248,10 +250,9 @@ export const updateConsumption = asyncHandler(async (req, res, next) => {
       if (!existingItem)
         return next(new AppError(`Consumption item ${item.id} not found`, 404));
 
-      if (
-        existingItem.current_stock <
-        Math.abs(existingItem.quantity - item.quantity)
-      ) {
+      const itemDetails = await ItemService.getItemById(existingItem.item_id);
+
+      if (itemDetails.current_stock < item.quantity) {
         return next(
           new AppError(
             `Insufficient stock for item ${existingItem.item_id}`,
@@ -260,28 +261,10 @@ export const updateConsumption = asyncHandler(async (req, res, next) => {
         );
       }
 
-      // Restore old stock
-      await ItemService.incrementStock(
-        existingItem.item_id,
-        existingItem.quantity,
-      );
       // Update quantity
       await ConsumptionService.updateConsumptionItem(item.id, {
         quantity: item.quantity,
       });
-      // Deduct new stock
-      const success = await ItemService.decrementStock(
-        existingItem.item_id,
-        item.quantity,
-      );
-      if (!success) {
-        return next(
-          new AppError(
-            `Insufficient stock for item ${existingItem.item_id}`,
-            400,
-          ),
-        );
-      }
     }
   }
 
@@ -308,11 +291,18 @@ export const deleteConsumption = asyncHandler(async (req, res, next) => {
 
   const consumption =
     await ConsumptionService.getConsumptionById(consumptionId);
-  if (!consumption) return next(new AppError("Consumption not found", 404));
 
-  for (const item of consumption.items) {
-    await ItemService.incrementStock(item.item.id, item.quantity);
-  }
+  if (consumption.status !== "pending_approval")
+    return next(
+      new AppError(
+        "Only consumptions in 'Pending Approval' status can be deleted",
+        400,
+      ),
+    );
+
+  // if approved consumptions are to be deleted, we need to restore the stock by inserting opposite stock movements. But as per current requirements, only pending approval consumptions can be deleted, so we don't need to handle stock restoration here.
+
+  if (!consumption) return next(new AppError("Consumption not found", 404));
 
   await ConsumptionService.deleteConsumption(consumptionId);
 
