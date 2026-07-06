@@ -29,6 +29,8 @@ export class ItemService {
       .maybeSingle();
     if (error) throw new Error(error.message);
 
+    if (!data) return null; // Return null if no item found
+
     const stockSummary = await this.getItemCurrentStockSummery(data.id);
     if (stockSummary) {
       data.current_stock = stockSummary.current_stock;
@@ -52,6 +54,8 @@ export class ItemService {
       .eq("name", name)
       .maybeSingle();
     if (error) throw new Error(error.message);
+
+    if (!data) return null; // Return null if no item found
 
     const stockSummary = await this.getItemCurrentStockSummery(data.id);
     if (stockSummary) {
