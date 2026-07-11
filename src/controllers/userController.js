@@ -167,6 +167,7 @@ export const loginUser = asyncHandler(async (req, res, next) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "none",
+    partitioned: true,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 
@@ -225,6 +226,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "none",
+    partitioned: true,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 
