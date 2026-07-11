@@ -18,7 +18,7 @@ class ItemRoutes {
   }
 
   initializeRoutes() {
-    this.router.post("/create", authMiddleware.authenticateToken, createItem);
+    this.router.post("/create", createItem);
     this.router.get("/list", authMiddleware.authenticateToken, getAllItems);
     this.router.get("/get/:id", authMiddleware.authenticateToken, getItemById);
     this.router.put(

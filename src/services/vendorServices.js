@@ -1,85 +1,89 @@
-import { supabase } from "../config/supabase.js";
+// src/services/vendorService.js
+import pool from "../config/database.js";
 import { cacheHelper } from "../utils/cacheHelper.js";
 
 export class VendorService {
+  // ---------- Helper to get DB client ----------
+  static _getDb(client) {
+    return client || pool;
+  }
+
   // ----- Single vendor by ID (cached) -----
-  static async getVendorById(id) {
+  static async getVendorById(id, client = null) {
+    const db = this._getDb(client);
     const cacheKey = `vendor:${id}`;
     let vendor = cacheHelper.get(cacheKey);
     if (vendor) return vendor;
 
-    const { data, error } = await supabase
-      .from("vendors")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-
+    const query = "SELECT * FROM vendors WHERE id = $1";
+    const result = await db.query(query, [id]);
+    const data = result.rows[0] || null;
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
 
   // ----- Vendor by PAN (cached) -----
-  static async getVendorByPan(pan_number) {
+  static async getVendorByPan(pan_number, client = null) {
+    const db = this._getDb(client);
     const cacheKey = `vendor:pan:${pan_number}`;
     let vendor = cacheHelper.get(cacheKey);
     if (vendor !== undefined) return vendor; // null means not found
 
-    const { data, error } = await supabase
-      .from("vendors")
-      .select("*")
-      .eq("pan_number", pan_number)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-
+    const query = "SELECT * FROM vendors WHERE pan_number = $1";
+    const result = await db.query(query, [pan_number]);
+    const data = result.rows[0] || null;
     cacheHelper.set(cacheKey, data);
     return data;
   }
 
   // ----- Vendor by Phone (cached) -----
-  static async getVendorByPhone(phone_number) {
+  static async getVendorByPhone(phone_number, client = null) {
+    const db = this._getDb(client);
     const cacheKey = `vendor:phone:${phone_number}`;
     let vendor = cacheHelper.get(cacheKey);
-    if (vendor !== undefined) return vendor; // cache hit (even if null)
+    if (vendor !== undefined) return vendor;
 
-    const { data, error } = await supabase
-      .from("vendors")
-      .select("*")
-      .eq("phone_number", phone_number)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-
+    const query = "SELECT * FROM vendors WHERE phone_number = $1";
+    const result = await db.query(query, [phone_number]);
+    const data = result.rows[0] || null;
     cacheHelper.set(cacheKey, data);
     return data;
   }
 
   // ----- Insert new vendor (clear relevant caches) -----
-  static async insertVendor(vendorData) {
-    const { data, error } = await supabase
-      .from("vendors")
-      .insert(vendorData)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+  static async insertVendor(vendorData, client = null) {
+    const db = this._getDb(client);
+    const keys = Object.keys(vendorData);
+    const columns = keys.join(", ");
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
+    const query = `INSERT INTO vendors (${columns}) VALUES (${placeholders}) RETURNING *`;
+    const values = Object.values(vendorData);
+    const result = await db.query(query, values);
+    if (!result.rows.length) throw new Error("Failed to insert vendor");
+    const data = result.rows[0];
 
-    // Invalidate paginated lists (all vendors caches)
+    // Invalidate paginated lists
     cacheHelper.delPattern("vendors:");
     return data;
   }
 
   // ----- Update vendor (clear caches for this vendor and lists) -----
-  static async updateVendor(id, vendorData) {
+  static async updateVendor(id, vendorData, client = null) {
+    const db = this._getDb(client);
     // Fetch old vendor data to know previous PAN and phone for cache invalidation
-    const oldVendor = await this.getVendorById(id);
+    const oldVendor = await this.getVendorById(id, client);
     if (!oldVendor) throw new Error("Vendor not found");
 
-    const { data, error } = await supabase
-      .from("vendors")
-      .update(vendorData)
-      .eq("id", id)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+    const keys = Object.keys(vendorData);
+    if (keys.length === 0) {
+      return oldVendor;
+    }
+    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(", ");
+    const query = `UPDATE vendors SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *`;
+    const values = [...Object.values(vendorData), id];
+    const result = await db.query(query, values);
+    if (!result.rows.length) throw new Error("Vendor not found");
+    const data = result.rows[0];
 
     // Invalidate specific vendor cache
     cacheHelper.del(`vendor:${id}`);
@@ -112,13 +116,13 @@ export class VendorService {
   }
 
   // ----- Delete vendor (clear all related caches) -----
-  static async deleteVendor(id) {
-    const vendor = await this.getVendorById(id);
+  static async deleteVendor(id, client = null) {
+    const db = this._getDb(client);
+    const vendor = await this.getVendorById(id, client);
     if (!vendor) throw new Error("Vendor not found");
 
-    // Delete from database
-    const { error } = await supabase.from("vendors").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    const query = "DELETE FROM vendors WHERE id = $1";
+    await db.query(query, [id]);
 
     // Invalidate all caches related to this vendor
     cacheHelper.del(`vendor:${id}`);
@@ -129,7 +133,11 @@ export class VendorService {
   }
 
   // ----- Get all vendors with pagination & search (cached by query) -----
-  static async getVendors({ page = 1, limit = 10, search = "" } = {}) {
+  static async getVendors(
+    { page = 1, limit = 10, search = "" } = {},
+    client = null,
+  ) {
+    const db = this._getDb(client);
     const cacheKey = `vendors:${page}:${limit}:${search}`;
     const cached = cacheHelper.get(cacheKey);
     if (cached) return cached;
@@ -138,38 +146,42 @@ export class VendorService {
     const trimmedSearch = search.trim();
 
     // Count total
-    let countQuery = supabase
-      .from("vendors")
-      .select("*", { count: "exact", head: true });
+    const countParams = [];
+    let countQuery = "SELECT COUNT(*) FROM vendors";
     if (trimmedSearch) {
-      countQuery = countQuery.ilike("name", `%${trimmedSearch}%`);
+      countQuery += " WHERE name ILIKE $1";
+      countParams.push(`%${trimmedSearch}%`);
     }
-    const { count, error: countError } = await countQuery;
-    if (countError) throw new Error(countError.message);
+    const countResult = await db.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count, 10);
 
     // Fetch data
-    let dataQuery = supabase
-      .from("vendors")
-      .select("*")
-      .order("name", { ascending: true })
-      .range(offset, offset + limit - 1);
+    const dataParams = [];
+    let dataQuery = "SELECT * FROM vendors";
     if (trimmedSearch) {
-      dataQuery = dataQuery.ilike("name", `%${trimmedSearch}%`);
+      dataQuery += " WHERE name ILIKE $1";
+      dataParams.push(`%${trimmedSearch}%`);
     }
-    const { data, error } = await dataQuery;
-    if (error) throw new Error(error.message);
+    dataQuery +=
+      " ORDER BY name ASC LIMIT $" +
+      (dataParams.length + 1) +
+      " OFFSET $" +
+      (dataParams.length + 2);
+    dataParams.push(limit, offset);
 
-    const totalPages = Math.ceil(count / limit);
+    const dataResult = await db.query(dataQuery, dataParams);
+
+    const totalPages = Math.ceil(total / limit);
     const result = {
-      data,
+      data: dataResult.rows,
       pagination: {
         page,
         limit,
-        totalItems: count,
+        totalItems: total,
         totalPages,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,
-        search,
+        search: trimmedSearch,
       },
     };
 

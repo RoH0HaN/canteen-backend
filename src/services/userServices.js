@@ -1,4 +1,5 @@
-import { supabase } from "../config/supabase.js";
+// src/services/userService.js
+import pool from "../config/database.js";
 import { cacheHelper } from "../utils/cacheHelper.js";
 
 export class UserService {
@@ -8,12 +9,8 @@ export class UserService {
     let user = cacheHelper.get(cacheKey);
     if (user) return user;
 
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+    const data = result.rows[0] || null;
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
@@ -24,55 +21,58 @@ export class UserService {
     let user = cacheHelper.get(cacheKey);
     if (user) return user;
 
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const result = await pool.query("SELECT * FROM users WHERE user_id = $1", [
+      userId,
+    ]);
+    const data = result.rows[0] || null;
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
 
   // ----- Insert new user (invalidate all user caches) -----
   static async insertUser(userData) {
-    const { data, error } = await supabase
-      .from("users")
-      .insert(userData)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+    const keys = Object.keys(userData);
+    const columns = keys.join(", ");
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
+    const query = `INSERT INTO users (${columns}) VALUES (${placeholders}) RETURNING *`;
+    const values = Object.values(userData);
 
-    // Invalidate all caches that might contain this user
+    const result = await pool.query(query, values);
+    if (!result.rows.length) throw new Error("Failed to insert user");
+    const data = result.rows[0];
+
     this._invalidateAllUserCaches();
     return data;
   }
 
   // ----- Update user (invalidate specific user caches) -----
   static async updateUser(id, updates) {
-    const { data, error } = await supabase
-      .from("users")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+      return this.getUserById(id); // no changes, return existing
+    }
 
-    // Invalidate caches for this user
+    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(", ");
+    const query = `UPDATE users SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *`;
+    const values = [...Object.values(updates), id];
+
+    const result = await pool.query(query, values);
+    if (!result.rows.length) throw new Error("User not found");
+    const data = result.rows[0];
+
     this._invalidateUserCaches(data);
     return data;
   }
 
-  // ----- Save refresh token (uses user_id unique, not id) -----
+  // ----- Save refresh token (updates by user_id, invalidates caches) -----
   static async saveRefreshToken(userId, refreshToken) {
-    const { error } = await supabase
-      .from("users")
-      .update({ refresh_token: refreshToken })
-      .eq("user_id", userId);
-    if (error) throw new Error(error.message);
-    // Also invalidate caches because refresh_token changed
-    const user = await this.getUserByUserId(userId);
-    if (user) this._invalidateUserCaches(user);
+    const query =
+      "UPDATE users SET refresh_token = $1 WHERE user_id = $2 RETURNING *";
+    const result = await pool.query(query, [refreshToken, userId]);
+    if (!result.rows.length) throw new Error("User not found");
+    const user = result.rows[0];
+
+    this._invalidateUserCaches(user);
   }
 
   // ----- Get all users with pagination and optional search -----
@@ -85,44 +85,45 @@ export class UserService {
     if (cached) return cached;
 
     // Count total
-    let countQuery = supabase
-      .from("users")
-      .select("*", { count: "exact", head: true });
+    const countParams = [];
+    let countQuery = "SELECT COUNT(*) FROM users";
     if (trimmedSearch) {
-      countQuery = countQuery.or(
-        `name.ilike.%${trimmedSearch}%,user_id.ilike.%${trimmedSearch}%`,
-      );
+      countQuery += " WHERE name ILIKE $1 OR user_id ILIKE $1";
+      countParams.push(`%${trimmedSearch}%`);
     }
-    const { count, error: countError } = await countQuery;
-    if (countError) throw new Error(countError.message);
+    const countResult = await pool.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    // Fetch paginated data
-    let dataQuery = supabase
-      .from("users")
-      .select("*")
-      .order("name", { ascending: true })
-      .range(offset, offset + limit - 1);
+    // Fetch data
+    const dataParams = [];
+    let dataQuery = "SELECT * FROM users";
     if (trimmedSearch) {
-      dataQuery = dataQuery.or(
-        `name.ilike.%${trimmedSearch}%,user_id.ilike.%${trimmedSearch}%`,
-      );
+      dataQuery += " WHERE name ILIKE $1 OR user_id ILIKE $1";
+      dataParams.push(`%${trimmedSearch}%`);
     }
-    const { data, error } = await dataQuery;
-    if (error) throw new Error(error.message);
+    dataQuery +=
+      " ORDER BY name ASC LIMIT $" +
+      (dataParams.length + 1) +
+      " OFFSET $" +
+      (dataParams.length + 2);
+    dataParams.push(limit, offset);
 
-    const totalPages = Math.ceil(count / limit);
+    const dataResult = await pool.query(dataQuery, dataParams);
+
+    const totalPages = Math.ceil(total / limit);
     const result = {
-      data,
+      data: dataResult.rows,
       pagination: {
         page,
         limit,
-        totalItems: count,
+        totalItems: total,
         totalPages,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,
         search: trimmedSearch,
       },
     };
+
     cacheHelper.set(cacheKey, result);
     return result;
   }
@@ -133,7 +134,6 @@ export class UserService {
       cacheHelper.del(`user:id:${user.id}`);
       cacheHelper.del(`user:userId:${user.user_id}`);
     }
-    // Also invalidate all aggregated user lists because they may contain this user
     cacheHelper.delPattern("users:");
   }
 

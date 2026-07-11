@@ -12,7 +12,6 @@ import {
   updateRequisition,
   getRequisitionsByStatus,
   updateRequisitionBill,
-  showPdf,
   submitFinalRequisition,
   getRequisitionLogs,
 } from "../controllers/requisitionController.js";
@@ -58,7 +57,6 @@ class RequisitionRoutes {
     this.router.put(
       "/receive/:id",
       authMiddleware.authenticateToken,
-      upload.singleFile,
       receiveRequisition,
     );
     this.router.delete(
@@ -82,7 +80,6 @@ class RequisitionRoutes {
       upload.singleFile,
       updateRequisitionBill,
     );
-    this.router.put("/show-pdf/:id", authMiddleware.authenticateToken, showPdf);
     this.router.put(
       "/submit-final-requisition/:id",
       authMiddleware.authenticateToken,

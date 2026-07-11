@@ -10,6 +10,8 @@ import {
 } from "../utils/validators.js";
 import { Enums } from "../utils/enums.js";
 import { StockMovementService } from "../services/stockMovementsService.js";
+import { runTransaction } from "../utils/transaction.js";
+import { UnitConversionService } from "../services/unitConversionService.js";
 
 /**
  * @desc    Create a new consumption event (deduct stock)
@@ -31,63 +33,164 @@ import { StockMovementService } from "../services/stockMovementsService.js";
  * }
  */
 export const createConsumption = asyncHandler(async (req, res, next) => {
-  // Parse items if string (from form-data)
-  if (req.body.items && typeof req.body.items === "string") {
-    try {
-      req.body.items = JSON.parse(req.body.items);
-    } catch (err) {
-      return next(
-        new AppError("Invalid items format. Must be a valid JSON array", 400),
-      );
-    }
-  }
-
   const { error, value } = createConsumptionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
-  const { purpose, notes, items } = value;
+  const { items, ...consumptionData } = value;
 
+  // Generate reference number
   const referenceNumber =
     await ConsumptionService.generateConsumptionReferenceNumber();
+  consumptionData.reference_number = referenceNumber;
+  consumptionData.placed_by = req.user.id;
 
-  const consumption = await ConsumptionService.insertConsumption({
-    purpose,
-    notes,
-    placed_by: req.user.id,
-    reference_number: referenceNumber,
-  });
-
-  if (!consumption)
-    return next(new AppError("Failed to create consumption", 500));
-
+  // Validate items (outside transaction)
   for (const item of items) {
+    // Check if item exists
     const itemExists = await ItemService.getItemById(item.item_id);
     if (!itemExists)
       return next(new AppError(`Item ${item.item_id} not found`, 404));
 
-    if (itemExists.current_stock < item.quantity)
+    // Validate unit_id is allowed for this item
+    const availableUnits = await UnitConversionService.getAvailableUnits(
+      item.item_id,
+    );
+    if (!availableUnits.some((u) => u.id == item.unit_id)) {
       return next(
-        new AppError(`Insufficient stock for item ${item.item_id}`, 400),
+        new AppError(
+          `Unit ${item.unit_id} is not valid for item ${item.item_id}`,
+          400,
+        ),
       );
+    }
 
-    await ConsumptionService.insertConsumptionItem({
-      consumption_event_id: consumption.id,
-      item_id: item.item_id,
-      quantity: item.quantity,
-    });
+    // Convert requested quantity to base unit
+    const baseQuantity = await UnitConversionService.convertToBaseUnit(
+      item.item_id,
+      item.quantity,
+      item.unit_id,
+    );
+
+    // Get current stock in base unit (call RPC)
+    const stockResult = await StockMovementService.getCurrentStock(
+      item.item_id,
+    );
+    const currentStock = stockResult?.current_stock || 0;
+
+    // Check stock sufficiency (optional: warn only, or block)
+    if (baseQuantity > currentStock) {
+      return next(
+        new AppError(
+          `Insufficient stock for item ${itemExists.name}. Required: ${baseQuantity} ${itemExists.base_unit}, Available: ${currentStock}`,
+          400,
+        ),
+      );
+    }
   }
 
-  await ConsumptionService.insertConsumptionStatusLog({
-    consumption_id: consumption.id,
-    old_status: null,
-    new_status: "pending_approval",
-    changed_by: req.user.id,
-    remarks: "Consumption created",
+  // Execute all writes inside a transaction
+  const newConsumption = await runTransaction(async (client) => {
+    // Insert consumption header
+    const conHeader = await ConsumptionService.insertConsumption(
+      consumptionData,
+      client,
+    );
+
+    // Insert consumption items
+    for (const item of items) {
+      await ConsumptionService.insertConsumptionItem(
+        {
+          consumption_event_id: conHeader.id,
+          item_id: item.item_id,
+          quantity: item.quantity,
+          unit_id: item.unit_id,
+          // approved_quantity and approval_remarks not set at creation
+        },
+        client,
+      );
+    }
+
+    // Insert status log
+    await ConsumptionService.insertConsumptionStatusLog(
+      {
+        consumption_id: conHeader.id,
+        old_status: null,
+        new_status: "draft",
+        changed_by: req.user.id,
+        remarks: "Consumption drafted",
+      },
+      client,
+    );
+
+    return conHeader;
   });
 
   res
     .status(201)
-    .json(new AppSuccess("Consumption created successfully", consumption));
+    .json(
+      new AppSuccess("Consumption drafted successfully", newConsumption, 201),
+    );
+});
+
+/**
+ * @desc    Submit a final consumption for approval (Manager only)
+ * @route   PUT /api/v1/consumptions/submit-final-consumption/:id
+ * @access  Private (Manager only)
+ * @param   {number} id - Consumption ID in URL
+ * @returns {AppSuccess} No data, only message
+ *
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "Consumption submitted for approval successfully",
+ *   "data": null
+ * }
+ */
+export const submitFinalConsumption = asyncHandler(async (req, res, next) => {
+  const consumptionId = parseInt(req.params.id, 10);
+  if (isNaN(consumptionId))
+    return next(new AppError("Invalid consumption ID", 400));
+
+  const consumption =
+    await ConsumptionService.getConsumptionById(consumptionId);
+  if (!consumption) return next(new AppError("Consumption not found", 404));
+
+  if (consumption.status !== "draft")
+    return next(new AppError("Consumption is not in draft status", 400));
+
+  await runTransaction(async (client) => {
+    await ConsumptionService.updateConsumption(
+      consumptionId,
+      {
+        status: "pending_approval",
+      },
+      client,
+    );
+
+    await ConsumptionService.insertConsumptionStatusLog(
+      {
+        consumption_id: consumptionId,
+        old_status: "draft",
+        new_status: "pending_approval",
+        changed_by: req.user.id,
+        remarks: "Consumption submitted for approval",
+      },
+      client,
+    );
+  });
+
+  res
+    .status(200)
+    .json(
+      new AppSuccess(
+        "Consumption submitted for approval successfully",
+        null,
+        200,
+      ),
+    );
 });
 
 /**
@@ -109,10 +212,14 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid consumption ID", 400));
 
   const { error, value } = approveConsumptionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
   const { items } = value;
 
+  // Fetch consumption (outside transaction)
   const consumption =
     await ConsumptionService.getConsumptionById(consumptionId);
   if (!consumption) return next(new AppError("Consumption not found", 404));
@@ -125,21 +232,13 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Validate all items (outside transaction)
   for (const item of items) {
-    const consumptionItem = consumption.items.find((ri) => ri.id === item.id);
+    const consumptionItem = consumption.items.find((ri) => ri.id == item.id);
     if (!consumptionItem)
       return next(
         new AppError(`Consumption item ID ${item.id} not found`, 404),
       );
-
-    if (item.approved_quantity > consumptionItem.item.current_stock) {
-      return next(
-        new AppError(
-          "Approved quantity cannot be greater than current stock",
-          400,
-        ),
-      );
-    }
 
     if (item.approved_quantity <= 0) {
       return next(
@@ -149,43 +248,89 @@ export const approveConsumption = asyncHandler(async (req, res, next) => {
         ),
       );
     }
-    await ConsumptionService.updateConsumptionItem(item.id, {
-      approved_quantity: item.approved_quantity,
-      approval_remarks: item.approval_remarks,
-    });
 
-    const success = await ItemService.decrementStock(
+    // Convert approved quantity to base unit
+    const baseQuantity = await UnitConversionService.convertToBaseUnit(
       consumptionItem.item.id,
       item.approved_quantity,
+      consumptionItem.unit_id,
     );
-    if (!success) {
+
+    // Get current stock in base unit
+    const stockInfo = await StockMovementService.getCurrentStock(
+      consumptionItem.item.id,
+    );
+    const currentStock = stockInfo?.current_stock || 0;
+
+    // Check stock sufficiency
+    if (baseQuantity > currentStock) {
       return next(
         new AppError(
-          `Insufficient stock for item ${consumptionItem.item.id}`,
+          `Insufficient stock for item ${consumptionItem.item.name}. ` +
+            `Required: ${baseQuantity} ${consumptionItem.item.base_unit}, ` +
+            `Available: ${currentStock}`,
           400,
         ),
       );
     }
-
-    await StockMovementService.insertStockMovement({
-      item_id: consumptionItem.item.id,
-      quantity: item.approved_quantity,
-      movement_type: "issue",
-      movement_date: new Date(),
-      reference_number: consumption.reference_number,
-    });
   }
 
-  await ConsumptionService.updateConsumption(consumptionId, {
-    status: "approved",
-  });
+  // Execute all writes inside a transaction
+  await runTransaction(async (client) => {
+    // Update each consumption item
+    for (const item of items) {
+      const consumptionItem = consumption.items.find((ri) => ri.id == item.id);
+      await ConsumptionService.updateConsumptionItem(
+        item.id,
+        {
+          approved_quantity: item.approved_quantity,
+          approval_remarks: item.approval_remarks,
+        },
+        client,
+      );
 
-  await ConsumptionService.insertConsumptionStatusLog({
-    consumption_id: consumptionId,
-    old_status: "pending_approval",
-    new_status: "approved",
-    changed_by: req.user.id,
-    remarks: "Consumption approved",
+      // Insert stock movement (issue)
+      const baseQuantity = await UnitConversionService.convertToBaseUnit(
+        consumptionItem.item.id,
+        item.approved_quantity,
+        consumptionItem.unit_id,
+        client,
+      );
+
+      await StockMovementService.insertStockMovement(
+        {
+          item_id: consumptionItem.item.id,
+          movement_type: "issue",
+          quantity: item.approved_quantity,
+          unit_id: consumptionItem.unit_id,
+          base_quantity: baseQuantity,
+          rate: 0, // issues have no rate
+          rate_per_base_unit: 0, // issues have no rate
+          movement_date: new Date(),
+          reference_number: consumption.reference_number,
+        },
+        client,
+      );
+    }
+
+    // Update consumption header status
+    await ConsumptionService.updateConsumption(
+      consumptionId,
+      { status: "approved" },
+      client,
+    );
+
+    // Insert status log
+    await ConsumptionService.insertConsumptionStatusLog(
+      {
+        consumption_id: consumptionId,
+        old_status: "pending_approval",
+        new_status: "approved",
+        changed_by: req.user.id,
+        remarks: "Consumption approved",
+      },
+      client,
+    );
   });
 
   res
@@ -211,79 +356,112 @@ export const updateConsumption = asyncHandler(async (req, res, next) => {
   if (isNaN(consumptionId))
     return next(new AppError("Invalid consumption ID", 400));
 
-  // Parse items if string
-  if (req.body.items && typeof req.body.items === "string") {
-    try {
-      req.body.items = JSON.parse(req.body.items);
-    } catch (err) {
-      return next(
-        new AppError("Invalid items format. Must be a valid JSON array", 400),
-      );
-    }
-  }
-
   const { error, value } = updateConsumptionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
   const { items, ...updatedData } = value;
 
+  // Fetch existing consumption (outside transaction)
   const existing = await ConsumptionService.getConsumptionById(consumptionId);
   if (!existing) return next(new AppError("Consumption not found", 404));
 
-  if (existing.status !== "pending_approval")
+  if (existing.status === "approved") {
+    return next(
+      new AppError("Consumptions in 'Approved' status cannot be updated", 400),
+    );
+  }
+
+  if (req.user.role !== "data_entry" && existing.status === "draft") {
     return next(
       new AppError(
-        "Only consumptions in 'Pending Approval' status can be updated",
+        "Only data entry users can update consumptions in 'Draft' status",
         400,
       ),
     );
+  }
 
-  await ConsumptionService.updateConsumption(consumptionId, updatedData);
-
-  if (items && items.length) {
-    for (const item of items) {
-      const existingItem = await ConsumptionService.getConsumptionItemById(
-        item.id,
+  // Validate items (outside transaction) – each must exist and stock must be sufficient
+  for (const item of items || []) {
+    const consumptionItem = existing.items.find((ri) => ri.id == item.id);
+    if (!consumptionItem) {
+      return next(
+        new AppError(`Consumption item ID ${item.id} not found`, 404),
       );
-      if (!existingItem)
-        return next(new AppError(`Consumption item ${item.id} not found`, 404));
+    }
 
-      if (
-        existingItem.current_stock <
-        Math.abs(existingItem.quantity - item.quantity)
-      ) {
-        return next(
-          new AppError(
-            `Insufficient stock for item ${existingItem.item_id}`,
-            400,
-          ),
-        );
-      }
+    // Validate unit_id is allowed for this item
+    const availableUnits = await UnitConversionService.getAvailableUnits(
+      consumptionItem.item.id,
+    );
+    if (!availableUnits.some((u) => u.id == item.unit_id)) {
+      return next(
+        new AppError(
+          `Unit ${item.unit_id} is not valid for item ${consumptionItem.item.name}`,
+          400,
+        ),
+      );
+    }
 
-      // Restore old stock
-      await ItemService.incrementStock(
-        existingItem.item_id,
-        existingItem.quantity,
+    if (item.quantity <= 0) {
+      return next(
+        new AppError(
+          `Quantity for item ${consumptionItem.item.name} must be > 0`,
+          400,
+        ),
       );
-      // Update quantity
-      await ConsumptionService.updateConsumptionItem(item.id, {
-        quantity: item.quantity,
-      });
-      // Deduct new stock
-      const success = await ItemService.decrementStock(
-        existingItem.item_id,
-        item.quantity,
+    }
+
+    // Convert updated quantity to base unit
+    const baseQuantity = await UnitConversionService.convertToBaseUnit(
+      consumptionItem.item.id,
+      item.quantity,
+      item.unit_id,
+    );
+
+    // Check current stock (in base unit)
+    const stockInfo = await StockMovementService.getCurrentStock(
+      consumptionItem.item.id,
+    );
+    const currentStock = stockInfo?.current_stock || 0;
+
+    if (baseQuantity > currentStock) {
+      return next(
+        new AppError(
+          `Insufficient stock for ${consumptionItem.item.name}. ` +
+            `Required: ${baseQuantity} ${consumptionItem.item.base_unit}, ` +
+            `Available: ${currentStock}`,
+          400,
+        ),
       );
-      if (!success) {
-        return next(
-          new AppError(
-            `Insufficient stock for item ${existingItem.item_id}`,
-            400,
-          ),
-        );
-      }
     }
   }
+
+  // Execute all writes inside a transaction
+  await runTransaction(async (client) => {
+    // Update header (if any fields provided)
+    if (Object.keys(updatedData).length > 0) {
+      await ConsumptionService.updateConsumption(
+        consumptionId,
+        updatedData,
+        client,
+      );
+    }
+
+    // Update each consumption item
+    for (const item of items || []) {
+      await ConsumptionService.updateConsumptionItem(
+        item.id,
+        {
+          quantity: item.quantity,
+          unit_id: item.unit_id,
+        },
+        client,
+      );
+    }
+  });
 
   res.status(200).json(new AppSuccess("Consumption updated successfully"));
 });
@@ -310,8 +488,10 @@ export const deleteConsumption = asyncHandler(async (req, res, next) => {
     await ConsumptionService.getConsumptionById(consumptionId);
   if (!consumption) return next(new AppError("Consumption not found", 404));
 
-  for (const item of consumption.items) {
-    await ItemService.incrementStock(item.item.id, item.quantity);
+  if (consumption.status === "approved") {
+    return next(
+      new AppError("Consumptions in 'Approved' status cannot be deleted", 400),
+    );
   }
 
   await ConsumptionService.deleteConsumption(consumptionId);
