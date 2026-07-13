@@ -296,39 +296,6 @@ export const getCurrentUser = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * @desc    Get the user by ID
- * @route   GET /api/v1/users/me
- * @access  Private
- * @param   {number} id - User ID in URL
- * @returns {AppSuccess} Full user object (excluding password)
- *
- * @example Response (200 OK)
- * {
- *   "statusCode": 200,
- *   "message": "User found",
- *   "data": {
- *     "id": 5,
- *     "name": "John Doe",
- *     "designation": "Canteen Manager",
- *     "role": "manager",
- *     "user_id": "john123",
- *     "signature_url": "https://...",
- *     "status": "active"
- *   }
- * }
- */
-export const getUserById = asyncHandler(async (req, res, next) => {
-  const userId = req.user.id;
-  const user = await UserService.getUserById(userId);
-
-  if (!user) {
-    return next(new AppError("User not found", 404));
-  }
-
-  res.status(200).json(new AppSuccess("User found", user, 200));
-});
-
-/**
  * @desc    Update the currently authenticated user's profile
  * @route   PUT /api/v1/users/update/:id
  * @access  Public (but user can only update their own profile, admin can update any)
@@ -568,7 +535,7 @@ export const getAllUsers = asyncHandler(async (req, res, next) => {
  *   }
  * }
  */
-export const getUserByUserId = asyncHandler(async (req, res, next) => {
+export const getUserById = asyncHandler(async (req, res, next) => {
   const userId = parseInt(req.params.id, 10);
   if (isNaN(userId)) {
     return next(new AppError("Invalid user ID", 400));
