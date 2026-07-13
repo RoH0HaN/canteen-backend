@@ -548,3 +548,40 @@ export const getAllUsers = asyncHandler(async (req, res, next) => {
   const result = await UserService.getAllUsers({ page, limit, search });
   res.status(200).json(new AppSuccess("Users retrieved", result, 200));
 });
+
+/**
+ * @desc    Get a user by their user_id (admin only)
+ * @route   GET /api/v1/users/:id
+ * @access  Private (Admin)
+ * @param   {number} id - User ID in URL
+ * @returns {AppSuccess} Full user object (excluding password)
+ * @example Response (200 OK)
+ * {
+ *   "statusCode": 200,
+ *   "message": "User retrieved",
+ *   "data": {
+ *     "id": 5,
+ *     "name": "John Doe",
+ *     "user_id": "john123",
+ *     "role": "manager",
+ *     "status": "active"
+ *   }
+ * }
+ */
+export const getUserByUserId = asyncHandler(async (req, res, next) => {
+  const userId = parseInt(req.params.id, 10);
+  if (isNaN(userId)) {
+    return next(new AppError("Invalid user ID", 400));
+  }
+
+  const user = await UserService.getUserById(userId);
+  if (!user) {
+    return next(new AppError("User not found", 404));
+  }
+
+  const { password, ...userWithoutPassword } = user; // Exclude password from response
+
+  res
+    .status(200)
+    .json(new AppSuccess("User retrieved", userWithoutPassword, 200));
+});
