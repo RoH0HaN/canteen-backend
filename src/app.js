@@ -15,6 +15,8 @@ import VendorRoutes from "./routes/vendorRoutes.js";
 import ItemRoutes from "./routes/itemRoutes.js";
 import RequisitionRoutes from "./routes/requisitionRoutes.js";
 import ConsumptionRoutes from "./routes/consumptionRoutes.js";
+import UnitRoutes from "./routes/unitRoutes.js";
+import PackagingRoutes from "./routes/packagingRoutes.js";
 
 export class App {
   constructor() {
@@ -64,6 +66,8 @@ export class App {
     this.app.use(`${initial}/items`, new ItemRoutes().router);
     this.app.use(`${initial}/requisitions`, new RequisitionRoutes().router);
     this.app.use(`${initial}/consumptions`, new ConsumptionRoutes().router);
+    this.app.use(`${initial}/units`, new UnitRoutes().router);
+    this.app.use(`${initial}/packagings`, new PackagingRoutes().router);
   }
 
   initializeErrorHandling() {

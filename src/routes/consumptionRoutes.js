@@ -8,6 +8,7 @@ import {
   updateConsumption,
   approveConsumption,
   getConsumptionsByStatus,
+  submitFinalConsumption,
 } from "../controllers/consumptionController.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
@@ -52,6 +53,11 @@ class ConsumptionRoutes {
       "/list-by-status",
       authMiddleware.authenticateToken,
       getConsumptionsByStatus,
+    );
+    this.router.put(
+      "/submit-final-consumption/:id",
+      authMiddleware.authenticateToken,
+      submitFinalConsumption,
     );
   }
 }

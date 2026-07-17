@@ -14,6 +14,8 @@ import { v4 as uuidv4 } from "uuid";
 import { Enums } from "../utils/enums.js";
 import { ItemService } from "../services/itemService.js";
 import { StockMovementService } from "../services/stockMovementsService.js";
+import { runTransaction } from "../utils/transaction.js";
+import { UnitConversionService } from "../services/unitConversionService.js";
 
 /**
  * @desc    Create a new requisition
@@ -37,51 +39,86 @@ import { StockMovementService } from "../services/stockMovementsService.js";
  */
 export const createRequisition = asyncHandler(async (req, res, next) => {
   const { error, value } = createRequisitionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
   const { items, ...requisitionData } = value;
 
+  // Check if vendor exists
   const existingVendor = await VendorService.getVendorById(
     requisitionData.vendor_id,
   );
   if (!existingVendor) return next(new AppError("Vendor not found", 404));
 
+  // Generate reference number
   const referenceNumber =
     await RequisitionService.generateRequisitionReferenceNumber();
   requisitionData.reference_number = referenceNumber;
   requisitionData.placed_by = req.user.id;
 
-  const newRequisition =
-    await RequisitionService.insertRequisition(requisitionData);
-
   for (const item of items) {
-    if (item.required_quantity <= 0) {
+    // Validate unit_id is allowed for this item
+    const availableUnits = await UnitConversionService.getAvailableUnits(
+      item.item_id,
+    );
+    if (!availableUnits.some((u) => u.id == item.ordered_unit_id)) {
       return next(
         new AppError(
-          `Required quantity for item_id ${item.item_id} must be > 0`,
+          `Unit ${item.ordered_unit_id} is not valid for item ${item.item_id}`,
           400,
         ),
       );
     }
-    await RequisitionService.insertRequisitionItems({
-      requisition_id: newRequisition.id,
-      item_id: item.item_id,
-      required_quantity: item.required_quantity,
-    });
   }
 
-  await RequisitionService.insertRequisitionStatusLog({
-    requisition_id: newRequisition.id,
-    old_status: null,
-    new_status: "draft",
-    changed_by: req.user.id,
-    remarks: "Requisition drafted",
+  const newRequisition = await runTransaction(async (client) => {
+    // Insert header
+    const reqHeader = await RequisitionService.insertRequisition(
+      requisitionData,
+      client,
+    );
+
+    // Insert items
+    for (const item of items) {
+      if (item.required_quantity <= 0) {
+        throw new AppError(
+          `Required quantity for item_id ${item.item_id} must be > 0`,
+          400,
+        );
+      }
+
+      await RequisitionService.insertRequisitionItems(
+        {
+          requisition_id: reqHeader.id,
+          item_id: item.item_id,
+          required_quantity: item.required_quantity,
+          ordered_unit_id: item.ordered_unit_id,
+        },
+        client,
+      );
+    }
+
+    // Insert status log
+    await RequisitionService.insertRequisitionStatusLog(
+      {
+        requisition_id: reqHeader.id,
+        old_status: null,
+        new_status: "draft",
+        changed_by: req.user.id,
+        remarks: "Requisition drafted",
+      },
+      client,
+    );
+
+    return reqHeader;
   });
 
   res
     .status(201)
     .json(
-      new AppSuccess("Requisition drafed successfully", newRequisition, 201),
+      new AppSuccess("Requisition drafted successfully", newRequisition, 201),
     );
 });
 
@@ -111,20 +148,27 @@ export const submitFinalRequisition = asyncHandler(async (req, res, next) => {
   if (requisition.status !== "draft")
     return next(new AppError("Requisition is not in draft status", 400));
 
-  if (!requisition.show_pdf)
-    return next(new AppError("PDF preview (submission) not viewd", 400));
+  await runTransaction(async (client) => {
+    await RequisitionService.updateRequisition(
+      requisitionId,
+      {
+        status: "pending_approval",
+      },
+      client,
+    );
 
-  await RequisitionService.updateRequisition(requisitionId, {
-    status: "pending_approval",
-    show_pdf: false,
+    await RequisitionService.insertRequisitionStatusLog(
+      {
+        requisition_id: requisitionId,
+        old_status: "draft",
+        new_status: "pending_approval",
+        changed_by: req.user.id,
+        remarks: "Requisition submitted for approval",
+      },
+      client,
+    );
   });
-  await RequisitionService.insertRequisitionStatusLog({
-    requisition_id: requisitionId,
-    old_status: "draft",
-    new_status: "pending_approval",
-    changed_by: req.user.id,
-    remarks: "Requisition submitted for approval",
-  });
+
   res
     .status(200)
     .json(
@@ -180,7 +224,7 @@ export const submitFinalRequisition = asyncHandler(async (req, res, next) => {
  *         "approved_quantity": 0,
  *         "approval_remarks": null,
  *         "received_quantity": 0,
- *         "item": { "id": 1, "name": "Basmati Rice", "unit": "KG", "current_stock": 0, "average_rate": 0, "stock_value": 0 }
+ *         "item": { "id": 1, "name": "Basmati Rice", "unit_id": 2 }
  *       }
  *     ]
  *   }
@@ -222,10 +266,14 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid requisition ID", 400));
 
   const { error, value } = approveRequisitionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
   const { items } = value;
 
+  // Fetch Requisition (outside transaction)
   const requisition =
     await RequisitionService.getRequisitionById(requisitionId);
   if (!requisition) return next(new AppError("Requisition not found", 404));
@@ -238,12 +286,14 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Validate all items first (to avoid partial failure)
   for (const item of items) {
-    const requisitionItem = requisition.items.find((ri) => ri.id === item.id);
+    const requisitionItem = requisition.items.find((ri) => ri.id == item.id);
     if (!requisitionItem)
       return next(
         new AppError(`Requisition item ID ${item.id} not found`, 404),
       );
+
     if (item.approved_quantity <= 0) {
       return next(
         new AppError(
@@ -252,22 +302,42 @@ export const approveRequisition = asyncHandler(async (req, res, next) => {
         ),
       );
     }
-    await RequisitionService.updateRequisitionItem(item.id, {
-      approved_quantity: item.approved_quantity,
-      approval_remarks: item.approval_remarks,
-    });
   }
 
-  await RequisitionService.updateRequisition(requisitionId, {
-    status: "approved",
-    show_pdf: false,
-  });
-  await RequisitionService.insertRequisitionStatusLog({
-    requisition_id: requisitionId,
-    old_status: "pending_approval",
-    new_status: "approved",
-    changed_by: req.user.id,
-    remarks: "Requisition approved",
+  // Execute all updates inside a transaction
+  await runTransaction(async (client) => {
+    // Update each requisition item
+    for (const item of items) {
+      await RequisitionService.updateRequisitionItem(
+        item.id,
+        {
+          approved_quantity: item.approved_quantity,
+          approval_remarks: item.approval_remarks,
+        },
+        client,
+      );
+    }
+
+    // Update requisition status
+    await RequisitionService.updateRequisition(
+      requisitionId,
+      {
+        status: "approved",
+      },
+      client,
+    );
+
+    // Insert status log
+    await RequisitionService.insertRequisitionStatusLog(
+      {
+        requisition_id: requisitionId,
+        old_status: "pending_approval",
+        new_status: "approved",
+        changed_by: req.user.id,
+        remarks: "Requisition approved",
+      },
+      client,
+    );
   });
 
   res
@@ -294,24 +364,19 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
   if (isNaN(requisitionId))
     return next(new AppError("Invalid requisition ID", 400));
 
-  // Parse items if string
-  if (req.body.items && typeof req.body.items === "string") {
-    try {
-      req.body.items = JSON.parse(req.body.items);
-    } catch (err) {
-      return next(
-        new AppError("Invalid items format. Must be a valid JSON array", 400),
-      );
-    }
-  }
-
   const { error, value } = receiveRequisitionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
-  const { items, total_amount } = value;
+  const { items } = value;
 
+  // Fetch requisition (read‑only, outside transaction)
   const requisition =
     await RequisitionService.getRequisitionById(requisitionId);
+  console.log(requisition);
+
   if (!requisition) return next(new AppError("Requisition not found", 404));
   if (requisition.status !== "approved") {
     return next(
@@ -322,15 +387,27 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
     );
   }
 
-  if (!requisition.show_pdf)
-    return next(new AppError("PDF preview (receive) not viewd", 400));
-
+  // Validate all items before starting the transaction
   for (const item of items) {
-    const requisitionItem = requisition.items.find((ri) => ri.id === item.id);
+    const requisitionItem = requisition.items.find((ri) => ri.id == item.id);
     if (!requisitionItem)
       return next(
         new AppError(`Requisition item ID ${item.id} not found`, 404),
       );
+
+    // Validate unit_id is allowed for this item
+    const availableUnits = await UnitConversionService.getAvailableUnits(
+      requisitionItem.item.id,
+    );
+    if (!availableUnits.some((u) => u.id == item.received_unit_id)) {
+      return next(
+        new AppError(
+          `Unit ${item.received_unit_id} is not valid for item ${requisitionItem.item.name}`,
+          400,
+        ),
+      );
+    }
+
     if (item.received_quantity < 0) {
       return next(
         new AppError(
@@ -339,56 +416,84 @@ export const receiveRequisition = asyncHandler(async (req, res, next) => {
         ),
       );
     }
-    await RequisitionService.updateRequisitionItem(item.id, {
-      received_quantity: item.received_quantity,
-      rate: item.rate, // Store the rate at which the item was received for accurate stock valuation and future average rate calculations
-    });
-
-    // ** Below code is commented as we are maintaining stock movements in a separate table and not updating current stock in items table directly. Stock summary will be calculated based on stock movements. **
-    // await ItemService.incrementStock(
-    //   requisitionItem.item.id,
-    //   item.received_quantity,
-    // );
-
-    await StockMovementService.insertStockMovement({
-      item_id: requisitionItem.item.id,
-      quantity: item.received_quantity,
-      movement_type: "receipt",
-      movement_date: new Date(),
-      reference_number: requisition.reference_number,
-      rate: item.rate, // Store the rate at which the item was received for accurate stock valuation and future average rate calculations
-    });
   }
 
-  const requisitionData = {
-    status: "received",
-    total_amount: total_amount || requisition.total_amount,
-    show_pdf: false,
-  };
-  // Handle optional file upload (vendor bill or delivery challan)
-  if (req.file) {
-    try {
-      requisitionData.bill_file_url = await uploadFile(
-        req.file,
-        `VENDOR/BILL/${uuidv4()}`,
+  // Execute all database writes inside a transaction
+  await runTransaction(async (client) => {
+    // Update each requisition item and insert stock movement
+    for (const item of items) {
+      const requisitionItem = requisition.items.find((ri) => ri.id == item.id);
+
+      // Calculate total cost and rate per base unit
+      const totalCost = item.rate * item.received_quantity;
+
+      // Update requisition item
+      await RequisitionService.updateRequisitionItem(
+        item.id,
+        {
+          received_quantity: item.received_quantity,
+          received_unit_id: item.received_unit_id,
+          rate: item.rate,
+          total_cost: totalCost,
+        },
+        client,
       );
-    } catch (uploadError) {
-      return next(
-        new AppError(
-          `Failed to upload vendor bill: ${uploadError.message}`,
-          500,
-        ),
+
+      // Convert to base unit
+      const baseQuantity = await UnitConversionService.convertToBaseUnit(
+        requisitionItem.item.id,
+        item.received_quantity,
+        item.received_unit_id,
+        client,
+      );
+
+      // Calculate rate per base unit
+      const ratePerBaseUnit = totalCost / baseQuantity;
+
+      // Insert stock movement
+      await StockMovementService.insertStockMovement(
+        {
+          item_id: requisitionItem.item.id,
+          movement_type: "receipt",
+          quantity: item.received_quantity,
+          unit_id: item.received_unit_id,
+          base_quantity: baseQuantity,
+          rate: item.rate,
+          rate_per_base_unit: ratePerBaseUnit,
+          movement_date: new Date(),
+          reference_number: requisition.reference_number,
+        },
+        client,
       );
     }
-  }
 
-  await RequisitionService.updateRequisition(requisitionId, requisitionData);
-  await RequisitionService.insertRequisitionStatusLog({
-    requisition_id: requisitionId,
-    old_status: "approved",
-    new_status: "received",
-    changed_by: req.user.id,
-    remarks: "Requisition received",
+    // Compute total amount if not provided
+    const computedTotal = items.reduce(
+      (acc, curr) => acc + curr.rate * curr.received_quantity,
+      0,
+    );
+
+    // Update requisition header
+    await RequisitionService.updateRequisition(
+      requisitionId,
+      {
+        status: "received",
+        total_amount: computedTotal,
+      },
+      client,
+    );
+
+    // 4. Insert status log
+    await RequisitionService.insertRequisitionStatusLog(
+      {
+        requisition_id: requisitionId,
+        old_status: "approved",
+        new_status: "received",
+        changed_by: req.user.id,
+        remarks: "Requisition received",
+      },
+      client,
+    );
   });
 
   res
@@ -418,17 +523,22 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid requisition ID", 400));
 
   const { error, value } = updateRequisitionSchema.validate(req.body);
-  if (error) return next(new AppError(error.details[0].message, 400));
+  if (error)
+    return next(
+      new AppError(`Validation error: ${error.details[0].message}`, 400),
+    );
 
   const { items, new_items, ...requisitionData } = value;
 
+  // Fetch requisition (read-only, outside transaction)
   const existing = await RequisitionService.getRequisitionById(requisitionId);
   if (!existing) return next(new AppError("Requisition not found", 404));
 
-  if (existing.status === "received") {
+  // Validation (outside transaction)
+  if (existing.status === "received" || existing.status === "approved") {
     return next(
       new AppError(
-        "Only requisitions in 'Pending Approval' or 'Approved' status can be updated",
+        "Requisitions in 'Received' or 'Approved' status cannot be updated",
         400,
       ),
     );
@@ -443,45 +553,58 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
     );
   }
 
-  await RequisitionService.updateRequisition(requisitionId, requisitionData);
+  // If items are provided, validate them first
+  for (const item of items || []) {
+    const existingItem = existing.items.find((ri) => ri.id == item.id);
+    if (!existingItem) {
+      return next(
+        new AppError(`Requisition item ID ${item.id} not found`, 404),
+      );
+    }
 
-  if (items && items.length) {
-    for (const item of items) {
-      const existingItem = existing.items.find((ri) => ri.id === item.id);
-      if (!existingItem)
-        return next(
-          new AppError(`Requisition item ID ${item.id} not found`, 404),
-        );
+    // Validate unit_id is allowed for this item
+    const availableUnits = await UnitConversionService.getAvailableUnits(
+      existingItem.item.id,
+    );
+    if (!availableUnits.some((u) => u.id == item.unit_id)) {
+      return next(
+        new AppError(
+          `Unit ${item.unit_id} is not valid for item ${existingItem.item.name}`,
+          400,
+        ),
+      );
+    }
 
-      if (existingItem.current_stock < existingItem.received_quantity) {
-        return next(
-          new AppError(
-            `Insufficient stock for item ${existingItem.item_id}`,
-            400,
-          ),
-        );
-      }
-
-      await RequisitionService.updateRequisitionItem(item.id, {
-        required_quantity: item.required_quantity,
-        approved_quantity: item.approved_quantity,
-        approval_remarks: item.approval_remarks,
-        received_quantity: item.received_quantity,
-      });
+    if (item.required_quantity <= 0) {
+      return next(
+        new AppError(`Required quantity for item ${item.id} must be > 0`, 400),
+      );
     }
   }
 
-  // Handle new items addition
-  if (new_items && new_items.length) {
-    for (const item of new_items) {
-      await RequisitionService.insertRequisitionItems({
-        requisition_id: requisitionId,
-        item_id: item.item_id,
-        required_quantity: item.required_quantity,
-        approved_quantity: item.approved_quantity,
-      });
+  // Execute all writes inside a transaction
+  await runTransaction(async (client) => {
+    // Update requisition header
+    if (Object.keys(requisitionData).length > 0) {
+      await RequisitionService.updateRequisition(
+        requisitionId,
+        requisitionData,
+        client,
+      );
     }
-  }
+
+    // Update requisition items
+    for (const item of items || []) {
+      await RequisitionService.updateRequisitionItem(
+        item.id,
+        {
+          required_quantity: item.required_quantity,
+          ordered_unit_id: item.ordered_unit_id,
+        },
+        client,
+      );
+    }
+  });
 
   res
     .status(200)
@@ -513,7 +636,7 @@ export const deleteRequisition = asyncHandler(async (req, res, next) => {
   if (existing.status === "received") {
     return next(
       new AppError(
-        "Only requisitions in 'Pending Approval' or 'Approved' status can be deleted",
+        "Only requisitions in 'Draft', 'Pending Approval' or 'Approved' status can be deleted",
         400,
       ),
     );
@@ -555,7 +678,7 @@ export const deleteRequisitionItem = asyncHandler(async (req, res, next) => {
   if (requisition.status === "received") {
     return next(
       new AppError(
-        "Only requisitions in 'Pending Approval' or 'Approved' status can have items deleted",
+        "Only requisitions in 'Draft', 'Pending Approval' or 'Approved' status can have items deleted",
         400,
       ),
     );
@@ -785,34 +908,6 @@ export const updateRequisitionBill = asyncHandler(async (req, res, next) => {
   res
     .status(200)
     .json(new AppSuccess("Requisition updated successfully", null, 200));
-});
-
-/**
- * @desc    Show a requisition's PDF
- * @route   PUT /api/v1/requisitions/show-pdf/:id
- * @access  Public
- * @param   {number} id - Requisition ID in URL
- * @returns {AppSuccess} No data, only message
- *
- * @example Response (200 OK)
- * {
- *   "statusCode": 200,
- *   "message": "PDF viewed successfully",
- *   "data": null
- * }
- */
-export const showPdf = asyncHandler(async (req, res, next) => {
-  const requisitionId = parseInt(req.params.id, 10);
-  if (isNaN(requisitionId))
-    return next(new AppError("Invalid requisition ID", 400));
-
-  const requisition =
-    await RequisitionService.getRequisitionById(requisitionId);
-  if (!requisition) return next(new AppError("Requisition not found", 404));
-
-  await RequisitionService.toggleShowPdf(requisitionId, true);
-
-  res.status(200).json(new AppSuccess("PDF viewed successfully", null, 200));
 });
 
 /**

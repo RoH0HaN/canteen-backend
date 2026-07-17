@@ -5,6 +5,7 @@ import { ItemService } from "../services/itemService.js";
 import { createItemSchema, updateItemSchema } from "../utils/validators.js";
 import { deleteFile, uploadFile } from "../services/storageService.js";
 import { StockMovementService } from "../services/stockMovementsService.js";
+import { UnitConversionService } from "../services/unitConversionService.js";
 
 /**
  * @desc    Create a new inventory item
@@ -19,9 +20,8 @@ import { StockMovementService } from "../services/stockMovementsService.js";
  *   "data": {
  *     "id": 12,
  *     "name": "Basmati Rice",
- *     "unit": "kg",
+ *     "unit_id": 2,
  *     "min_stock_level": 10,
- *     "opening_stock": 50,
  *   }
  * }
  */
@@ -33,7 +33,7 @@ export const createItem = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const { name, unit, min_stock_level, opening_stock } = value;
+  const { name, base_unit_id, min_stock_level } = value;
 
   const existingItem = await ItemService.getItemByName(name);
   if (existingItem) {
@@ -42,10 +42,9 @@ export const createItem = asyncHandler(async (req, res, next) => {
 
   const item = await ItemService.insertItem({
     name,
-    unit,
+    base_unit_id,
     min_stock_level,
-    opening_stock,
-  }); // current stock will be fetched database separately
+  });
 
   res.status(201).json(new AppSuccess("Item created successfully", item, 201));
 });
@@ -64,12 +63,8 @@ export const createItem = asyncHandler(async (req, res, next) => {
  *   "data": {
  *     "id": 12,
  *     "name": "Basmati Rice",
- *     "unit": "kg",
+ *     "unit_id": 2,
  *     "min_stock_level": 10,
- *     "opening_stock": 50,
- *     "current_stock": 45
- *     "average_rate": 45
- *     "stock_value": 2025
  *   }
  * }
  */
@@ -101,10 +96,8 @@ export const getItemById = asyncHandler(async (req, res, next) => {
  *   "data": {
  *     "id": 12,
  *     "name": "Premium Basmati Rice",
- *     "unit": "kg",
+ *     "unit_id": 1,
  *     "min_stock_level": 15,
- *     "opening_stock": 50,
- *     "current_stock": 45
  *   }
  * }
  */
@@ -121,7 +114,8 @@ export const updateItem = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const { name, unit, min_stock_level } = value;
+  // base unit is not updatable, so we only check for name and min_stock_level
+  const { name, min_stock_level } = value;
 
   const existingItem = await ItemService.getItemByName(name);
   if (existingItem && existingItem.id !== itemId) {
@@ -130,7 +124,6 @@ export const updateItem = asyncHandler(async (req, res, next) => {
 
   const updatedItem = await ItemService.updateItem(itemId, {
     name,
-    unit,
     min_stock_level,
   });
 
@@ -183,8 +176,8 @@ export const deleteItem = asyncHandler(async (req, res, next) => {
  *   "message": "Items fetched successfully",
  *   "data": {
  *     "data": [
- *       { "id": 12, "name": "Basmati Rice", "current_stock": 45, ... },
- *       { "id": 15, "name": "Chicken", "current_stock": 20, ... }
+ *       { "id": 12, "name": "Basmati Rice", "unit_id": 2 },
+ *       { "id": 15, "name": "Chicken", "unit_id": 1 }
  *     ],
  *     "pagination": {
  *       "page": 1,

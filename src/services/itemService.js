@@ -1,105 +1,96 @@
-import { supabase } from "../config/supabase.js";
+import pool from "../config/database.js";
 import { cacheHelper } from "../utils/cacheHelper.js";
 
 export class ItemService {
-  // ----- Insert a new item (invalidate all item caches) -----
-  static async insertItem(itemData) {
-    const { data, error } = await supabase
-      .from("items")
-      .insert(itemData)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+  // ---------- Helper to get DB client ----------
+  static _getDb(client) {
+    return client || pool;
+  }
 
-    // Invalidate all item‑related caches
+  // ----- Insert a new item (invalidate all item caches) -----
+  static async insertItem(itemData, client = null) {
+    const db = this._getDb(client);
+    const keys = Object.keys(itemData);
+    const columns = keys.join(", ");
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
+    const query = `INSERT INTO items (${columns}) VALUES (${placeholders}) RETURNING *`;
+    const values = Object.values(itemData);
+
+    const result = await db.query(query, values);
+    if (!result.rows.length) throw new Error("Failed to insert item");
+    const data = result.rows[0];
+
     this._invalidateAllItemCaches();
     return data;
   }
 
   // ----- Get item by ID (cached) -----
-  static async getItemById(id) {
+  static async getItemById(id, client = null) {
+    const db = this._getDb(client);
     const cacheKey = `item:id:${id}`;
     let item = cacheHelper.get(cacheKey);
     if (item) return item;
 
-    const { data, error } = await supabase
-      .from("items")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-
-    if (!data) return null; // Return null if no item found
-
-    const stockSummary = await this.getItemCurrentStockSummery(data.id);
-    if (stockSummary) {
-      data.current_stock = stockSummary.current_stock;
-      data.average_rate = stockSummary.average_rate;
-      data.stock_value = stockSummary.stock_value;
-    }
-
+    const query = "SELECT * FROM items WHERE id = $1";
+    const result = await db.query(query, [id]);
+    const data = result.rows[0] || null;
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
 
   // ----- Get item by name (cached) -----
-  static async getItemByName(name) {
+  static async getItemByName(name, client = null) {
+    const db = this._getDb(client);
     const cacheKey = `item:name:${name}`;
     let item = cacheHelper.get(cacheKey);
     if (item) return item;
 
-    const { data, error } = await supabase
-      .from("items")
-      .select("*")
-      .eq("name", name)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-
-    if (!data) return null; // Return null if no item found
-
-    const stockSummary = await this.getItemCurrentStockSummery(data.id);
-    if (stockSummary) {
-      data.current_stock = stockSummary.current_stock;
-      data.average_rate = stockSummary.average_rate;
-      data.stock_value = stockSummary.stock_value;
-    }
-
+    const query = "SELECT * FROM items WHERE name = $1";
+    const result = await db.query(query, [name]);
+    const data = result.rows[0] || null;
     if (data) cacheHelper.set(cacheKey, data);
     return data;
   }
 
   // ----- Update item (invalidate specific caches) -----
-  static async updateItem(id, updates) {
-    const { data, error } = await supabase
-      .from("items")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+  static async updateItem(id, updates, client = null) {
+    const db = this._getDb(client);
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+      return this.getItemById(id, client);
+    }
+    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(", ");
+    const query = `UPDATE items SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *`;
+    const values = [...Object.values(updates), id];
+    const result = await db.query(query, values);
+    if (!result.rows.length) throw new Error("Item not found");
+    const data = result.rows[0];
 
-    // Invalidate caches for this item (by id and by its old name if changed)
+    // Invalidate caches for this item
     cacheHelper.del(`item:id:${id}`);
     if (updates.name) cacheHelper.del(`item:name:${updates.name}`);
-    // Also invalidate aggregated lists
     cacheHelper.delPattern("items:");
     return data;
   }
 
   // ----- Delete item (invalidate caches) -----
-  static async deleteItem(id) {
-    const item = await this.getItemById(id);
+  static async deleteItem(id, client = null) {
+    const db = this._getDb(client);
+    const item = await this.getItemById(id, client);
     if (!item) throw new Error("Item not found");
 
-    const { error } = await supabase.from("items").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    const query = "DELETE FROM items WHERE id = $1";
+    await db.query(query, [id]);
 
-    // Invalidate all item caches
     this._invalidateAllItemCaches();
   }
 
   // ----- Get all items with pagination, optional search -----
-  static async getAllItems({ page = 1, limit = 10, search = "" } = {}) {
+  static async getAllItems(
+    { page = 1, limit = 10, search = "" } = {},
+    client = null,
+  ) {
+    const db = this._getDb(client);
     const offset = (page - 1) * limit;
     const trimmedSearch = search.trim();
 
@@ -107,97 +98,74 @@ export class ItemService {
     const cached = cacheHelper.get(cacheKey);
     if (cached) return cached;
 
-    // Count total
-    let countQuery = supabase
-      .from("items")
-      .select("*", { count: "exact", head: true });
+    // Count total items (with search filter)
+    const countParams = [];
+    let countQuery = "SELECT COUNT(*) FROM items i";
     if (trimmedSearch) {
-      countQuery = countQuery.ilike("name", `%${trimmedSearch}%`);
+      countQuery += " WHERE i.name ILIKE $1";
+      countParams.push(`%${trimmedSearch}%`);
     }
-    const { count, error: countError } = await countQuery;
-    if (countError) throw new Error(countError.message);
+    const countResult = await db.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    // Fetch paginated data
-    let dataQuery = supabase
-      .from("items")
-      .select("*")
-      .order("name", { ascending: true })
-      .range(offset, offset + limit - 1);
+    // Fetch paginated items with base unit name
+    const dataParams = [];
+    let dataQuery = `
+    SELECT 
+      i.*,
+      u.name AS base_unit_name,
+      u.symbol AS base_unit_symbol
+    FROM items i
+    LEFT JOIN units u ON u.id = i.base_unit_id
+  `;
     if (trimmedSearch) {
-      dataQuery = dataQuery.ilike("name", `%${trimmedSearch}%`);
+      dataQuery += " WHERE i.name ILIKE $1";
+      dataParams.push(`%${trimmedSearch}%`);
     }
-    const { data, error } = await dataQuery;
-    if (error) throw new Error(error.message);
+    dataQuery +=
+      " ORDER BY i.name ASC LIMIT $" +
+      (dataParams.length + 1) +
+      " OFFSET $" +
+      (dataParams.length + 2);
+    dataParams.push(limit, offset);
 
-    // Bulk fetch stock summaries
-    if (data.length > 0) {
-      const itemIds = data.map((item) => item.id);
-      const { data: stockSummaries, error: stockError } = await supabase.rpc(
-        "get_current_stock_bulk",
-        { item_ids: itemIds },
+    const dataResult = await db.query(dataQuery, dataParams);
+    const items = dataResult.rows;
+
+    // Fetch current stock for all items in bulk
+    if (items.length > 0) {
+      const itemIds = items.map((item) => item.id);
+      const stockQuery = "SELECT * FROM get_current_stock_bulk($1)";
+      const stockResult = await db.query(stockQuery, [itemIds]);
+      const stockMap = new Map(
+        stockResult.rows.map((row) => [row.item_id, row]),
       );
-      if (stockError) throw new Error(stockError.message);
 
-      const stockMap = new Map(stockSummaries.map((s) => [s.item_id, s]));
-      for (const item of data) {
-        const summary = stockMap.get(item.id);
-        if (summary) {
-          item.current_stock = summary.current_stock;
-          item.average_rate = summary.average_rate;
-          item.stock_value = summary.stock_value;
-        }
+      // Attach stock info to each item
+      for (const item of items) {
+        const stock = stockMap.get(item.id);
+        item.current_stock = stock?.current_stock || 0;
+        item.average_rate = stock?.average_rate || 0;
+        item.stock_value = stock?.stock_value || 0;
       }
     }
 
-    const totalPages = Math.ceil(count / limit);
+    const totalPages = Math.ceil(total / limit);
     const result = {
-      data,
+      data: items,
       pagination: {
         page,
         limit,
-        totalItems: count,
+        totalItems: total,
         totalPages,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,
         search: trimmedSearch,
       },
     };
+
     cacheHelper.set(cacheKey, result);
     return result;
-  }
-
-  static async decrementStock(itemId, quantity) {
-    const { data, error } = await supabase.rpc("decrement_stock", {
-      item_id: itemId,
-      quantity: quantity,
-    });
-    if (error) throw new Error(error.message);
-    if (data === true) {
-      // Invalidate caches for this item
-      cacheHelper.del(`item:id:${itemId}`);
-      cacheHelper.delPattern("items:"); // invalidate list caches
-    }
-    return data; // true = success, false = insufficient stock
-  }
-
-  static async incrementStock(itemId, quantity) {
-    const { error } = await supabase.rpc("increment_stock", {
-      item_id: itemId,
-      quantity: quantity,
-    });
-    if (error) throw new Error(error.message);
-    // Invalidate caches for this item
-    cacheHelper.del(`item:id:${itemId}`);
-    cacheHelper.delPattern("items:");
-  }
-
-  static async getItemCurrentStockSummery(itemId) {
-    const { data, error } = await supabase.rpc("get_current_stock", {
-      item_id: itemId,
-    });
-    if (error) throw new Error(error.message);
-
-    return data;
   }
 
   // ----- Helper: Invalidate all item caches -----

@@ -54,14 +54,12 @@ export const updateVendorSchema = Joi.object({
 // Item
 export const createItemSchema = Joi.object({
   name: Joi.string().required(),
-  unit: Joi.string().required(),
+  base_unit_id: Joi.number().required(),
   min_stock_level: Joi.number().required(),
-  opening_stock: Joi.number().required(),
 });
 
 export const updateItemSchema = Joi.object({
   name: Joi.string().optional(),
-  unit: Joi.string().optional(),
   min_stock_level: Joi.number().optional(),
 });
 
@@ -74,6 +72,7 @@ export const createRequisitionSchema = Joi.object({
       Joi.object({
         item_id: Joi.number().required(),
         required_quantity: Joi.number().required(),
+        ordered_unit_id: Joi.number().required(),
       }),
     )
     .required(),
@@ -92,12 +91,12 @@ export const approveRequisitionSchema = Joi.object({
 });
 
 export const receiveRequisitionSchema = Joi.object({
-  total_amount: Joi.number().optional(),
   items: Joi.array()
     .items(
       Joi.object({
         id: Joi.number().required(),
         received_quantity: Joi.number().required(),
+        received_unit_id: Joi.number().required(),
         rate: Joi.number().required(),
       }),
     )
@@ -107,15 +106,12 @@ export const receiveRequisitionSchema = Joi.object({
 export const updateRequisitionSchema = Joi.object({
   vendor_id: Joi.number().optional(),
   notes: Joi.string().optional(),
-  total_amount: Joi.number().optional(),
   items: Joi.array()
     .items(
       Joi.object({
         id: Joi.number().required(),
         required_quantity: Joi.number().required(),
-        approved_quantity: Joi.number().required(),
-        approval_remarks: Joi.string().allow("").optional(),
-        received_quantity: Joi.number().required(),
+        ordered_unit_id: Joi.number().required(),
       }),
     )
     .required(),
@@ -140,6 +136,7 @@ export const createConsumptionSchema = Joi.object({
       Joi.object({
         item_id: Joi.number().required(),
         quantity: Joi.number().required(),
+        unit_id: Joi.number().required(),
       }),
     )
     .required(),
@@ -165,7 +162,41 @@ export const updateConsumptionSchema = Joi.object({
       Joi.object({
         id: Joi.number().required(),
         quantity: Joi.number().required(),
+        unit_id: Joi.number().required(),
       }),
     )
     .optional(),
+});
+
+// Unit
+export const createUnitSchema = Joi.object({
+  name: Joi.string().required(),
+  symbol: Joi.string().optional().allow(""),
+  category: Joi.string()
+    .valid("count", "volume", "mass", "length")
+    .optional()
+    .allow(null),
+  base_unit_id: Joi.number().integer().optional().allow(null),
+  conversion_factor_to_base: Joi.number().positive().default(1),
+});
+
+export const updateUnitSchema = Joi.object({
+  name: Joi.string().optional(),
+  symbol: Joi.string().optional().allow(""),
+  category: Joi.string()
+    .valid("count", "volume", "mass", "length")
+    .optional()
+    .allow(null),
+  base_unit_id: Joi.number().integer().optional().allow(null),
+  conversion_factor_to_base: Joi.number().positive().optional(),
+});
+
+// Packaging
+export const createPackagingSchema = Joi.object({
+  from_unit_id: Joi.number().integer().required(),
+  quantity_in_base_unit: Joi.number().positive().required(),
+});
+
+export const updatePackagingSchema = Joi.object({
+  quantity_in_base_unit: Joi.number().positive().optional(),
 });
