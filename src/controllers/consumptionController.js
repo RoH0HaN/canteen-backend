@@ -486,7 +486,6 @@ export const deleteConsumption = asyncHandler(async (req, res, next) => {
 
   const consumption =
     await ConsumptionService.getConsumptionById(consumptionId);
-  if (!consumption) return next(new AppError("Consumption not found", 404));
 
   if (consumption.status === "approved") {
     return next(

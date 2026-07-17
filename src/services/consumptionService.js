@@ -311,6 +311,24 @@ export class ConsumptionService {
     return data;
   }
 
+  static async deleteConsumptionItem(itemId) {
+    // Get consumption_event_id to invalidate later
+    const { data: existing } = await supabase
+      .from("consumption_items")
+      .select("consumption_event_id")
+      .eq("id", itemId)
+      .single();
+    const { error } = await supabase
+      .from("consumption_items")
+      .delete()
+      .eq("id", itemId);
+    if (error) throw new Error(error.message);
+    if (existing?.consumption_event_id) {
+      cacheHelper.del(`consumption:${existing.consumption_event_id}`);
+    }
+    cacheHelper.delPattern("consumptions:");
+  }
+
   // ---------- Generate Reference Number ----------
   static async generateConsumptionReferenceNumber(client = null) {
     const db = this._getDb(client);

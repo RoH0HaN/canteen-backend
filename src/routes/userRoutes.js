@@ -11,6 +11,7 @@ import {
   unblockUser,
   updateCurrentUser,
   getAllUsers,
+  getUserById,
 } from "../controllers/userController.js";
 import { authMiddleware } from "../middlewares/auth.js";
 
@@ -49,6 +50,7 @@ class UserRoutes {
       unblockUser,
     );
     this.router.get("/list", authMiddleware.authenticateToken, getAllUsers);
+    this.router.get("/get/:id", authMiddleware.authenticateToken, getUserById);
   }
 }
 export default UserRoutes;

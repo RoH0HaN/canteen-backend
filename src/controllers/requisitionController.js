@@ -528,7 +528,7 @@ export const updateRequisition = asyncHandler(async (req, res, next) => {
       new AppError(`Validation error: ${error.details[0].message}`, 400),
     );
 
-  const { items, ...requisitionData } = value;
+  const { items, new_items, ...requisitionData } = value;
 
   // Fetch requisition (read-only, outside transaction)
   const existing = await RequisitionService.getRequisitionById(requisitionId);
